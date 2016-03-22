@@ -358,7 +358,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return volleyError;
     }
 
-    abstract protected void deliverResponse(Object response);
+    abstract protected void deliverResponse(T response);
 
     public void deliverError(VolleyError error) {
         if (mErrorListener != null) {
