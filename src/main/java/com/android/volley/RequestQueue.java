@@ -35,22 +35,25 @@ public class RequestQueue {
     /**
      * Staging area for requests that already have a duplicate request in flight.
      */
-    private final Map<String, Queue<Request<?>>> mWaitingRequests = new HashMap<>();
+    private final Map<String, Queue<Request<?>>> mWaitingRequests =
+            new HashMap<String, Queue<Request<?>>>();
 
     /**
      * The set of all requests currently being processed by this requestQueue.
      */
-    private final Set<Request<?>> mCurrentRequests = new HashSet<>();
+    private final Set<Request<?>> mCurrentRequests = new HashSet<Request<?>>();
 
     /**
      * The cache triage queue.
      */
-    private final PriorityBlockingQueue<Request<?>> mCacheQueue = new PriorityBlockingQueue<>();
+    private final PriorityBlockingQueue<Request<?>> mCacheQueue =
+            new PriorityBlockingQueue<Request<?>>();
 
     /**
      * The queue of requests that are actually going out to the network.
      */
-    private final PriorityBlockingQueue<Request<?>> mNetworkQueue = new PriorityBlockingQueue<>();
+    private final PriorityBlockingQueue<Request<?>> mNetworkQueue =
+            new PriorityBlockingQueue<Request<?>>();
 
     /**
      * Number of network request dispatcher threads to start.
@@ -79,7 +82,8 @@ public class RequestQueue {
      */
     private CacheDispatcher mCacheDispatcher;
 
-    private List<RequestFinishedListener> mFinishedListeners = new ArrayList<>();
+    private List<RequestFinishedListener> mFinishedListeners =
+            new ArrayList<RequestFinishedListener>();
 
     public <T> void finish(Request request) {
 
@@ -109,7 +113,36 @@ public class RequestQueue {
         mDelivery = delivery;
     }
 
-    public static interface RequestFinishedListener<T> {
-        public void onRequestFinished(Request<T> request);
+    /**
+     * Starts the dispatchers in this queue.
+     */
+    public void start() {
+        stop(); // Make sure any currently running dispatchers are stopped.
+        // Create the cache dispatcher and start it
+        mCacheDispatcher = new CacheDispatcher(mCacheQueue, mNetworkQueue, mCache, mDelivery);
+        mCacheDispatcher.start();
+
+        // Create network dispatchers (and corresponding threads) up to the pool size.
+        for (int i = 0; i < mDispatchers.length; i ++) {
+            NetworkDispatcher networkDispatcher = new NetworkDispatcher(mNetworkQueue, mNetwork,
+                    mCache, mDelivery);
+            mDispatchers[i] = networkDispatcher;
+            networkDispatcher.start();
+        }
+    }
+
+    /**
+     * Stops the cache and network dispatchers.
+     */
+    private void stop() {
+        if (mCacheDispatcher != null) {
+            mCacheDispatcher.quit();
+        }
+
+        for (int i = 0; i < mDispatchers.length; i ++) {
+            if (mDispatchers[i] != null) {
+                mDispatchers[i].quit();
+            }
+        }
     }
 }

@@ -355,13 +355,13 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return mResponseDelivered;
     }
 
-    abstract protected Request<T> parseNetworkResponse(NetworkResponse response);
+    abstract protected Response<T> parseNetworkResponse(NetworkResponse response);
 
     protected VolleyError parseNetworkError(VolleyError volleyError) {
         return volleyError;
     }
 
-    abstract protected void deliverResponse(T response);
+    abstract protected void deliverResponse(Object response);
 
     public void deliverError(VolleyError error) {
         if (mErrorListener != null) {
