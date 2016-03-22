@@ -9,17 +9,14 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * Created by wzy on 16-3-19.
+ * Volley的网络请求基类
  */
+@SuppressWarnings("unused")
 public abstract class Request<T> implements Comparable<Request<T>> {
-    /**
-     * Default encoding for POST or PUT parameters.
-     */
+    /** 默认参数编码是UTF-8 */
     private static final String DEFAULT_PARAMS_ENCODING = "UTF-8";
 
-    /**
-     * Supported request methods.
-     */
+    /** Volley支持的Http请求类型，我们一般常用的就是GET和POST */
     public interface Method {
         int DEPRECATED_GET_OR_POST = -1;
         int GET = 0;
@@ -32,26 +29,19 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         int PATCH = 7;
     }
 
-    /**
-     * Request method of this request.
-     */
+    /** 当前Request的HTTP请求类型 */
     private final int mMethod;
 
-    /**
-     * URL of this request.
-     */
+    /** 请求的url*/
     private final String mUrl;
 
+    /** 默认的TrafficStats的tag*/
     private final int mDefaultTrafficStatsTag;
 
-    /**
-     * Listener interface for errors.
-     */
+    /** request请求失败时的回调接口 */
     private final Response.ErrorListener mErrorListener;
 
-    /**
-     * Sequence number of this request, used to enforce FIFO ordering.
-     */
+    /** request的请求序列号，用于请求队列FIFO时排序查找使用 */
     private Integer mSequence;
 
     /**
