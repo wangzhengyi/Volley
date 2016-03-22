@@ -1,6 +1,5 @@
 package com.android.volley;
 
-import android.os.*;
 import android.os.Process;
 
 import java.util.concurrent.BlockingQueue;

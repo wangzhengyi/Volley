@@ -2,7 +2,6 @@ package com.android.volley;
 
 import android.os.Handler;
 import android.os.Looper;
-import android.widget.ListAdapter;
 
 import java.util.ArrayList;
 import java.util.HashMap;

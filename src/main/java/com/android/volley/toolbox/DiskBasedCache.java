@@ -4,14 +4,11 @@ import android.os.SystemClock;
 
 import com.android.volley.Cache;
 
-import org.w3c.dom.ProcessingInstruction;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -22,7 +19,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.BrokenBarrierException;
 
 /**
  * Created by wzy on 16-3-21.

@@ -5,11 +5,8 @@ import android.text.TextUtils;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.security.PublicKey;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Created by wzy on 16-3-19.
