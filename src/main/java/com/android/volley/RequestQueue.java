@@ -7,6 +7,7 @@ import android.widget.ListAdapter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -144,5 +145,55 @@ public class RequestQueue {
                 mDispatchers[i].quit();
             }
         }
+    }
+
+    /**
+     * Adds a Request to the dispatch queue.
+     * @param request The request to service
+     * @return The passed-in request
+     */
+    public <T> Request<?> add(Request<T> request) {
+        // Tag the request as belonging to this queue and add it to the set of current requests.
+        request.setRequestQueue(this);
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.add(request);
+        }
+
+        // Process requests in the order they are added.
+        request.setSequence(getSequenceNumber());
+        request.addMarker("add-to-queue");
+
+        // If the request is uncacheable, skip the cache queue and go straight to the network.
+        if (!request.shouldCache()) {
+            mNetworkQueue.add(request);
+            return request;
+        }
+
+        // Insert request into stage if there's already a request with the same cache key in flight.
+        synchronized (mWaitingRequests) {
+            String cacheKey = request.getCacheKey();
+            if (mWaitingRequests.containsKey(cacheKey)) {
+                // There is already a request in flight. Queue up.
+                Queue<Request<?>> stageRequests = mWaitingRequests.get(cacheKey);
+                if (stageRequests == null) {
+                    stageRequests = new LinkedList<Request<?>>();
+                }
+                stageRequests.add(request);
+                mWaitingRequests.put(cacheKey, stageRequests);
+            } else {
+                // Insert 'null' queue for this cacheKey, indicating there is now a request in
+                // flight.
+                mWaitingRequests.put(cacheKey, null);
+                mCacheQueue.add(request);
+            }
+            return request;
+        }
+    }
+
+    /**
+     * Gets a sequence number.
+     */
+    private int getSequenceNumber() {
+        return mSequenceGenerator.incrementAndGet();
     }
 }
