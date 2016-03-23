@@ -7,48 +7,36 @@ import android.os.SystemClock;
 
 import java.util.concurrent.BlockingQueue;
 
-/**
- * Provides a thread for performing network dispatch from a queue of requests.
- */
+/** 调度网络请求线程. */
 public class NetworkDispatcher extends Thread{
-    /**
-     * The queue of requests to service.
-     */
+    /** 网络请求队列. */
     private final BlockingQueue<Request<?>> mQueue;
 
-    /**
-     * The network interface for processing requests.
-     */
+    /** 封装了HurlStack的网络类，其performRequest方法是单个request请求真正执行的地方. */
     private final Network mNetwork;
 
-    /**
-     * The cache to write to.
-     */
+    /** 缓存类，存储请求结果的缓存。 */
     private final Cache mCache;
 
-    /**
-     * For posting responses and errors.
-     */
+    /** 请求结果传递类。 */
     private final ResponseDelivery mDelivery;
 
-    /**
-     * Used for telling us to die.
-     */
-    private volatile  boolean mQuit = false;
+    /** 暂停线程的标志位，替换Thread自身的stop方法. */
+    private volatile boolean mQuit = false;
 
-    /**
-     * Creates a new network dispatcher thread.
-     * @param queue Queue of incoming requests for triage
-     * @param network Network interface to use for performing requests
-     * @param cache Cache interface to use for writing responses to cache
-     * @param delivery Delivery interface to use for posting responses
-     */
+    /** 构造网络请求调度线程类。 */
     public NetworkDispatcher(BlockingQueue<Request<?>> queue,
                              Network network, Cache cache, ResponseDelivery delivery) {
         mQueue = queue;
         mNetwork = network;
         mCache = cache;
         mDelivery = delivery;
+    }
+
+    /** 强制停止当前调度线程。 */
+    public void quit() {
+        mQuit = true;
+        interrupt();
     }
 
     @Override
@@ -58,7 +46,9 @@ public class NetworkDispatcher extends Thread{
             long startTimeMs = SystemClock.elapsedRealtime();
             Request<?> request;
             try {
-                // Take a request from the queue.
+                // 使用BlockingQueue实现了生产者-消费者模型.
+                // 消费者是该调度线程。
+                // 生产者是request网络请求.
                 request = mQueue.take();
             } catch (InterruptedException e) {
                 // We may have been interrupted because it was time to quit.
@@ -69,18 +59,14 @@ public class NetworkDispatcher extends Thread{
             }
 
             try {
-                request.addMarker("network-queue-take");
-
                 if (request.isCanceled()) {
-                    request.finish("network-discard-cancelled");
                     continue;
                 }
 
                 addTrafficStatsTag(request);
 
-                // Perform the network request.
+                // 真正执行网络请求的地方.
                 NetworkResponse networkResponse = mNetwork.performRequest(request);
-                request.addMarker("network-http-complete");
 
                 // If the server returned 304 AND we delivered a response already,
                 // we're done -- don't deliver a second identical response.
@@ -89,17 +75,19 @@ public class NetworkDispatcher extends Thread{
                     continue;
                 }
 
-                // Parse the response here on the worker thread.
+                // 在当前线程中解析网络结果.
+                // 不同的Request实现的parseNetworkResponse是不同的(例如StringRequest和JsonRequest).
                 Response<?> response = request.parseNetworkResponse(networkResponse);
-                request.addMarker("network-parse-complete");
 
-                // Write to cache if applicable
+                //
                 if (request.shouldCache() && response.cacheEntry != null) {
                     mCache.put(request.getCacheKey(), response.cacheEntry);
-                    request.addMarker("network-cache-written");
                 }
 
-                // Post the response back
+                // 将网络请求结果进行传递.
+                // ResponseDelivery调用顺序如下:
+                // ResponseDelivery.postResponse==>ResponseDeliveryRunnable[Runnable]->run
+                // ==>Request->deliverResponse==>用户设置的Listener回调接口
                 request.markDelivered();
                 mDelivery.postResponse(request, response);
             } catch (VolleyError volleyError) {
@@ -123,13 +111,5 @@ public class NetworkDispatcher extends Thread{
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
             TrafficStats.setThreadStatsTag(request.getTrafficStatsTag());
         }
-    }
-
-    /**
-     * Forces this dispatcher to quit immediately.
-     */
-    public void quit() {
-        mQuit = true;
-        interrupt();
     }
 }

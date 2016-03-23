@@ -1,31 +1,31 @@
 # Volley源码解析
 
-为了学习Volley的网络框架,我在AS中将Volley代码重新撸了一遍,感觉这种照抄代码也是一种挺好的学习方式。再分析Volley源码之前,我们先考虑一下,如果我们自己要设计一个网络请求框架,需要实现哪些事情,有哪些注意事项?
+为了学习Volley的网络框架,我在AS中将Volley代码重新撸了一遍,感觉这种照抄代码也是一种挺好的学习方式.再分析Volley源码之前,我们先考虑一下,如果我们自己要设计一个网络请求框架,需要实现哪些事情,有哪些注意事项?
 
 我的总结如下：
 
 1. 需要抽象出request请求类（包括url, params, method等）,抽象出request请求类之后,我们可以对其继承从而实现丰富的扩展功能.
-2. 需要抽象出response类。即服务器返回的结果需要抽象出来,方便我们继承扩展。
-3. 需要实现并发和异步操作。具体包括：
+2. 需要抽象出response类.即服务器返回的结果需要抽象出来,方便我们继承扩展.
+3. 需要实现并发和异步操作.具体包括：
     
-    3-1. 抽象出Http请求类,封装基本操作。
+    3-1. 抽象出Http请求类,封装基本操作.
     
-    3-2. 将Http请求类在子线程中执行,最好能支撑并发。
+    3-2. 将Http请求类在子线程中执行,最好能支撑并发.
     
-    3-3. 由于需要并发,所以要用队列控制,并且能随时终止并发。
+    3-3. 由于需要并发,所以要用队列控制,并且能随时终止并发.
     
-    3-4. 子线程获取结果后,需要支持异步,将请求结果返回给主线程。
+    3-4. 子线程获取结果后,需要支持异步,将请求结果返回给主线程.
 
-4. 最好能实现缓存。当request抽象出来后,那相同的request请求可以直接从本地获取,不需要再通过网络获取。
+4. 最好能实现缓存.当request抽象出来后,那相同的request请求可以直接从本地获取,不需要再通过网络获取.
 5. 缓存需要有缓存替换机制,超时更新机制等.
 
-在我总结的这些问题的基础上,我们来学习一下Volley是如何解决并实现这些问题的。
+在我总结的这些问题的基础上,我们来学习一下Volley是如何解决并实现这些问题的.
 
 ****
 
 # 网络请求抽象类
 
-Request类就是Volley抽象出来的网络请求类了。我已经对其进行了中文注解,大家可以直接看一下其实现代码：
+Request类就是Volley抽象出来的网络请求类了.我已经对其进行了中文注解,大家可以直接看一下其实现代码：
 
 ```java
 /**
@@ -341,8 +341,8 @@ public abstract class Request<T> implements Comparable<Request<T>> {
 }
 ```
 
-代码虽然很长,但是都是对request很好的抽象,建议大家结合HTTP协议阅读一下该源码。
-Request中的泛型T用来对结果进行泛型表示,当定义出request基类之后,我们可以很轻松的对其进行继承,从而扩展出我们想要的request请求。
+代码虽然很长,但是都是对request很好的抽象,建议大家结合HTTP协议阅读一下该源码.
+Request中的泛型T用来对结果进行泛型表示,当定义出request基类之后,我们可以很轻松的对其进行继承,从而扩展出我们想要的request请求.
 
 例如Volley提供的StringRequest,源码如下:
 ```java
@@ -385,13 +385,13 @@ public class StringRequest extends Request<String>{
 }
 ```
 
-有了这个StringRequest类示例,我们也可以参考其实现很方便的对Request类进行扩展。再对request进行扩展时,我们通常只需要实现两个方法即可：
+有了这个StringRequest类示例,我们也可以参考其实现很方便的对Request类进行扩展.再对request进行扩展时,我们通常只需要实现两个方法即可：
 
 1. deliverResponse：这个方法很简单,就是将网络解析的结果传递给用户设置的回调接口.
-2. parseNetworkResponse : 这个方法比较关键,我们主要也是来重写该方法。如果我需要返回JsonObject,那么我就需要将参数NetworkResponse在该方法中转换成JsonObject.
-3. getParams : 这个方法是如果有POST参数时,需要重写该方法。
+2. parseNetworkResponse : 这个方法比较关键,我们主要也是来重写该方法.如果我需要返回JsonObject,那么我就需要将参数NetworkResponse在该方法中转换成JsonObject.
+3. getParams : 这个方法是如果有POST参数时,需要重写该方法.
 
-介绍完Request抽象,那我们继续来看一下Response抽象。
+介绍完Request抽象,那我们继续来看一下Response抽象.
 
 ****
 
@@ -399,7 +399,7 @@ public class StringRequest extends Request<String>{
 
 ## Response.java
 
-Response是Volley抽象出来对网络请求结果进行封装的类。具体注释源码如下：
+Response是Volley抽象出来对网络请求结果进行封装的类.具体注释源码如下：
 ```java
 /** 网络请求结果的封装类.其中泛型T为网络解析结果. */
 public class Response<T> {
@@ -454,7 +454,7 @@ public class Response<T> {
 }
 ```
 
-其实,Response只是对request请求结果的进一步封装。真正的HTTP Request请求结果的抽象其实是NetworkResponse类。
+其实,Response只是对request请求结果的进一步封装.真正的HTTP Request请求结果的抽象其实是NetworkResponse类.
 
 ## NetworkResponse.java
 
@@ -504,7 +504,7 @@ public class NetworkResponse {
 ****
 # 网络请求的并发和异步
 
-在讲解网络请求的并发和异步之前,我们先来看一下,Volley是如何封装网络请求的。
+在讲解网络请求的并发和异步之前,我们先来看一下,Volley是如何封装网络请求的.
 
 ## HurlStack.java
 
@@ -534,7 +534,7 @@ public class HurlStack implements HttpStack {
         map.putAll(request.getHeaders());
         map.putAll(additionalHeaders);
 
-        // 构造HttpURLConnection，封装一些固定参数.
+        // 构造HttpURLConnection,封装一些固定参数.
         String url = request.getUrl();
         URL parsedUrl = new URL(url);
         HttpURLConnection connection = openConnection(parsedUrl, request);
@@ -641,10 +641,16 @@ public class HurlStack implements HttpStack {
 }
 ```
 
-当用户new出HurlStack对象，调用它的performRequest方法，即可以发出HTTP请求，并获取HTTP请求结果。
-但是，Android主线程中是不允许进行耗时操作的，所以Volley实现了并发访问HurlStack的performRequest的方法。
-至于HurlStack的并发访问，就需要看NetworkDispatcher的实现。
+当用户new出HurlStack对象,调用它的performRequest方法,即可以发出HTTP请求,并获取HTTP请求结果.
+但是,Android主线程中是不允许进行耗时操作的,所以Volley实现了并发访问HurlStack的performRequest的方法.
+至于HurlStack的并发访问,就需要看NetworkDispatcher的实现.
 
 ## NetworkDispatcher.java
+
+NetworkDispatcher是一个线程,用来调度处理网络请求.启动后会不断从网络请求队列中取请求处理,队列为空则等待,请求处理结束则将结果传递给ResponseDelivery去执行后续处理,并判断结果是否要进行缓存.
+NetworkDispatcher中文注释代码如下：
+```java
+
+```
 
 

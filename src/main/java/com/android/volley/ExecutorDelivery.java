@@ -2,6 +2,8 @@ package com.android.volley;
 
 import android.os.Handler;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
@@ -44,11 +46,11 @@ public class ExecutorDelivery implements ResponseDelivery {
     }
 
     private class ResponseDeliveryRunnable implements Runnable {
-        private final Request<?> mRequest;
-        private final Response<?> mResponse;
+        private final Request mRequest;
+        private final Response mResponse;
         private final Runnable mRunnable;
 
-        public ResponseDeliveryRunnable(Request<?> request, Response<?> response, Runnable runnable) {
+        public ResponseDeliveryRunnable(Request request, Response response, Runnable runnable) {
             mRequest = request;
             mResponse = response;
             mRunnable = runnable;
