@@ -1,7 +1,9 @@
 package com.android.volley;
 
 import android.net.Uri;
+import android.support.annotation.NonNull;
 import android.text.TextUtils;
+import android.util.Log;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -13,10 +15,10 @@ import java.util.Map;
  */
 @SuppressWarnings("unused")
 public abstract class Request<T> implements Comparable<Request<T>> {
-    /** 默认参数编码是UTF-8 */
+    /** 默认参数编码是UTF-8. */
     private static final String DEFAULT_PARAMS_ENCODING = "UTF-8";
 
-    /** Volley支持的Http请求类型，我们一般常用的就是GET和POST */
+    /** Volley支持的Http请求类型，我们一般常用的就是GET和POST. */
     public interface Method {
         int DEPRECATED_GET_OR_POST = -1;
         int GET = 0;
@@ -29,67 +31,53 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         int PATCH = 7;
     }
 
-    /** 当前Request的HTTP请求类型 */
+    /** 当前Request的HTTP请求类型. */
     private final int mMethod;
 
-    /** 请求的url*/
+    /** 请求的url. */
     private final String mUrl;
 
-    /** 默认的TrafficStats的tag*/
+    /** 默认的TrafficStats的tag. */
     private final int mDefaultTrafficStatsTag;
 
-    /** request请求失败时的回调接口 */
+    /** request请求失败时的回调接口. */
     private final Response.ErrorListener mErrorListener;
 
-    /** request的请求序列号，用于请求队列FIFO时排序查找使用 */
+    /** request的请求序列号，用于请求队列FIFO时排序查找使用. */
     private Integer mSequence;
 
-    /**
-     * The request queue this request is associated with.
-     */
+    /** request的投放队列，该队列可采用FIFO方式执行request请求. */
     private RequestQueue mRequestQueue;
 
-    /**
-     * Whether or not responses to this request should be cached.
-     */
+    /** 该request请求是否需要缓存，默认http request请求都是可以缓存的. */
     private boolean mShouldCache = true;
 
-    /**
-     * Whether or not this request has been canceled.
-     */
+    /** 该request请求是否被取消的标志. */
     private boolean mCanceled = false;
 
-    /**
-     * Whether or not a response has been delivered for this request yet.
-     */
+    /** 该request是否已经获取请求结果. */
     private boolean mResponseDelivered = false;
 
-    /**
-     * Whether the request should be retried in the event of an HTTP 5xx(server) error.
-     */
+    /** 遇到服务器错误(5xx)时，该request请求是否需要重试. */
     private boolean mShouldRetryServerErrors = false;
 
-    /**
-     * The retry policy for this request.
-     */
+    /** request重试策略. */
     private RetryPolicy mRetryPolicy;
 
     /**
-     * When a request can be retrieved from cache but must be refresh from
-     * the network, the cache entry will be stored here so that in the event of
-     * a "Not Modified" response, we can be sure it hasn't been evicted from cache.
+     * 保存request缓存的结果.
+     * 因为当一个request可以被缓存，但是又必须要刷新（即需要从网络重新获取时），我们保存该缓存结果，可以确保该结果
+     * 不被cache的替换策略清除掉，以防服务器返回“Not Modified”时，我们可以继续使用该缓存结果.
      */
     private Cache.Entry mCacheEntry = null;
 
     /**
-     * An opaque token tagging this request; used for bulk cancellation.
+     * 创建一个Http request对象.
+     *
+     * @param method HTTP请求方式(GET, POST, PUT, DELETE...).
+     * @param url HTTP请求的url.
+     * @param listener 当HTTP访问出错时，用户设置的回调的接口.
      */
-    private Object mTag;
-
-    public Request(String url, Response.ErrorListener listener) {
-        this(Method.DEPRECATED_GET_OR_POST, url, listener);
-    }
-
     public Request(int method, String url, Response.ErrorListener listener) {
         mMethod = method;
         mUrl = url;
@@ -97,38 +85,23 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         mDefaultTrafficStatsTag = findDefaultTrafficStatsTag(url);
     }
 
-    /**
-     * Return the method for this request.
-     */
+    /** 返回HTTP请求方式. */
     public int getMethod() {
         return mMethod;
     }
 
-    /**
-     * Set a tag on this request.
-     */
-    public Request<?> setTag(Object tag) {
-        mTag = tag;
-        return this;
-    }
-
-    /**
-     * Returns this request's tag.
-     */
-    public Object getTag() {
-        return mTag;
-    }
-
+    /** 返回HTTP请求错误时的回调接口. */
     public Response.ErrorListener getErrorListener() {
         return mErrorListener;
     }
 
+    /** 返回统计类使用的Tag. */
     public int getTrafficStatsTag() {
         return mDefaultTrafficStatsTag;
     }
 
     /**
-     * The hashcode of the URL's host component, or 0 if there is none.
+     * 使用url的host字段的hash值作为统计类的tag.
      */
     private static int findDefaultTrafficStatsTag(String url) {
         if (!TextUtils.isEmpty(url)) {
@@ -143,46 +116,37 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return 0;
     }
 
-    /**
-     * Sets the retry policy for this request.
-     */
+    /** 设置重试接口.典型的组合模式，关联关系. */
     public Request<?> setRetryPolicy(RetryPolicy retryPolicy) {
         mRetryPolicy = retryPolicy;
         return this;
     }
 
-    /**
-     * Adds an event to this request's event log; for debugging.
-     */
+    /** 调试打印当前请求进度使用 */
     public void addMarker(String tag) {
-
+        Log.e("Volley", tag);
     }
 
+    /** 用于告知请求队列当前request已经结束. */
     void finish(final String tag) {
         if (mRequestQueue != null) {
             mRequestQueue.finish(this);
         }
     }
 
-    /**
-     * Associates this request with the given queue.
-     */
+    /** 设置当前request的请求队列. */
     public Request<?> setRequestQueue(RequestQueue requestQueue) {
         mRequestQueue = requestQueue;
         return this;
     }
 
-    /**
-     * Sets the sequence number of this request.
-     */
+    /** 设置当前request在当前request队列的系列号. */
     public final Request<?> setSequence(int sequence) {
         mSequence = sequence;
         return this;
     }
 
-    /**
-     * Returns the sequence number of this request.
-     */
+    /** 返回request请求的序列号. */
     public final int getSequence() {
         if (mSequence == null) {
             throw new IllegalStateException("getSequence called before setSequence");
@@ -190,90 +154,59 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return mSequence;
     }
 
-    /**
-     * Returns the URL of this request.
-     */
+    /** 返回request的url. */
     public String getUrl() {
         return mUrl;
     }
 
-    /**
-     * Returns the cache key for this request.
-     */
+    /** 使用request的url作为volley cache缓存系统存储的key值(默认url可唯一标识一个request). */
     public String getCacheKey() {
         return getUrl();
     }
 
-    /**
-     * Annotates this request with an entry retrieved for it from cache.
-     */
+    /** 设置request对应的volley cache缓存系统中的请求结果. */
     public Request<?> setCacheEntry(Cache.Entry entry) {
         mCacheEntry = entry;
         return this;
     }
 
-    /**
-     * Returns the annotated cache entry, or null if there isn't one.
-     */
+    /** 返回request的cache系统的请求结果. */
     public Cache.Entry getCacheEntry() {
         return mCacheEntry;
     }
 
-    /**
-     * Mark this request as canceled.
-     */
+    /** 标识该request已经被取消. */
     public void cancel() {
         mCanceled = true;
     }
 
-    /**
-     * Returns true if this request has been canceled.
-     */
+    /** 返回该request是否被取消标识. */
     public boolean isCanceled() {
         return mCanceled;
     }
 
+    /** 返回该request的headers. */
     public Map<String, String> getHeaders() throws AuthFailureError {
         return Collections.emptyMap();
     }
 
-    protected Map<String, String> getPostParams() throws AuthFailureError {
-        return getParams();
-    }
-
-    protected String getPostParamEncoding() {
-        return getParamsEncoding();
-    }
-
-    public String getPostBodyContentType() {
-        return getBodyContentType();
-    }
-
-    public byte[] getPostBody() throws AuthFailureError {
-        Map<String, String> postParams = getPostParams();
-        if (postParams != null && postParams.size() > 0) {
-            return encodeParameters(postParams, getPostParamsEncoding());
-        }
-        return null;
-    }
-
-    protected String getPostParamsEncoding() {
-        return getParamsEncoding();
-    }
-
+    /** 返回该request的请求体中参数，如果是GET请求，则直接返回null. */
     protected Map<String, String> getParams() throws AuthFailureError {
         return null;
     }
 
+    /** 返回该request请求参数编码. */
     protected String getParamsEncoding() {
         return DEFAULT_PARAMS_ENCODING;
     }
 
+    /** 获取request body content type. */
     public String getBodyContentType() {
         return "application/x-www-form-urlencoded; charset="
                 + getParamsEncoding();
     }
 
+    /** 返回request请求参数体. */
     public byte[] getBody() throws AuthFailureError {
         Map<String, String> params = getParams();
         if (params != null && params.size() > 0) {
@@ -282,6 +215,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return null;
     }
 
+    /** 构造post请求参数体. */
     private byte[] encodeParameters(Map<String, String> params, String paramsEncoding) {
         StringBuilder encodedParams = new StringBuilder();
         try {
@@ -297,24 +231,29 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         }
     }
 
+    /** 设置当前request是否需要被缓存. */
     public final Request<?> setShouldCache(boolean shouldCache) {
         mShouldCache = shouldCache;
         return this;
     }
 
+    /** 返回当前request是否需要被缓存. */
     public final boolean shouldCache() {
         return mShouldCache;
     }
 
+    /** 设置request的重试接口. */
     public final Request<?> setShouldRetryServerErrors(boolean shouldRetryServerErrors) {
         mShouldRetryServerErrors = shouldRetryServerErrors;
         return this;
     }
 
+    /** 返回该request当遇到服务器错误时是否需要重试标志 */
     public final boolean shouldRetryServerErrors() {
         return mShouldRetryServerErrors;
     }
 
+    /** request优先级枚举类. */
     public enum  Priority {
         LOW,
         NORMAL,
@@ -322,42 +261,52 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         IMMEDIATE
     }
 
+    /** 返回当前request的优先级.子类可以重写该方法修改request的优先级. */
     public Priority getPriority() {
         return Priority.NORMAL;
     }
 
+    /** 返回重试的时间，用于日志记录. */
     public final int getTimeoutMs() {
         return mRetryPolicy.getCurrentTimeout();
     }
 
+    /** 返回重试接口. */
     public RetryPolicy getRetryPolicy() {
         return mRetryPolicy;
     }
 
+    /** 用于标识已经将response传给该request. */
     public void markDelivered() {
         mResponseDelivered = true;
     }
 
+    /** 返回该request是否有response delivered. */
     public boolean hasHadResponseDelivered() {
         return mResponseDelivered;
     }
 
+    /** 子类必须重写该方法，用来解析http请求的结果. */
     abstract protected Response<T> parseNetworkResponse(NetworkResponse response);
 
+    /** 子类可以重写该方法，从而获取更精准的出错信息. */
     protected VolleyError parseNetworkError(VolleyError volleyError) {
         return volleyError;
     }
 
+    /** 子类必须重写该方法用于将网络结果返回给用户设置的回调接口. */
     abstract protected void deliverResponse(T response);
 
+    /** 将网络错误传递给回调接口. */
     public void deliverError(VolleyError error) {
         if (mErrorListener != null) {
             mErrorListener.onErrorResponse(error);
         }
     }
 
+    /** 先判断执行顺序，再判断request优先级. */
     @Override
-    public int compareTo(Request<T> another) {
+    public int compareTo(@NonNull Request<T> another) {
         Priority left = this.getPriority();
         Priority right = another.getPriority();
 

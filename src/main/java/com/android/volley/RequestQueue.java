@@ -6,6 +6,7 @@ import android.os.Looper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -85,8 +86,27 @@ public class RequestQueue {
     private List<RequestFinishedListener> mFinishedListeners =
             new ArrayList<RequestFinishedListener>();
 
-    public <T> void finish(Request request) {
+    <T> void finish(Request<T> request) {
+        // Remove from the set of requests currently being processed.
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.remove(request);
+        }
 
+        synchronized (mFinishedListeners) {
+            for (RequestFinishedListener<T> listener : mFinishedListeners) {
+                listener.onRequestFinished(request);
+            }
+        }
+
+        if (request.shouldCache()) {
+            synchronized (mWaitingRequests) {
+                String cacheKey = request.getCacheKey();
+                Queue<Request<?>> waitingRequests = mWaitingRequests.remove(cacheKey);
+                if (waitingRequests != null) {
+                    mCacheQueue.addAll(waitingRequests);
+                }
+            }
+        }
     }
 
     public RequestQueue(Cache cache, Network network) {
