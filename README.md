@@ -339,15 +339,50 @@ public abstract class Request<T> implements Comparable<Request<T>> {
                 getPriority() + " " + mSequence;
     }
 }
-
 ```
 
-代码虽然很长，但是都是对request很好的抽象，建议大家结合HTTP协议阅读一下该源码。当定义出request基类之后，我们可以很轻松的对其进行继承，从而扩展出我们想要的request请求。
+代码虽然很长，但是都是对request很好的抽象，建议大家结合HTTP协议阅读一下该源码。
+Request中的泛型T用来对结果进行泛型表示，当定义出request基类之后，我们可以很轻松的对其进行继承，从而扩展出我们想要的request请求。
 
 例如Volley提供的StringRequest，源码如下:
 ```java
+/** 一个返回结果的String的request实现类 */
+@SuppressWarnings("unused")
+public class StringRequest extends Request<String>{
+    private final Response.Listener<String> mListener;
 
+    /** 根据给定的METHOD设置对应的request. */
+    public StringRequest(int method, String url, Response.Listener<String> listener,
+                         Response.ErrorListener errorListener) {
+        super(method, url, errorListener);
+        mListener = listener;
+    }
 
+    /** 默认为GET请求的request. */
+    public StringRequest(String url, Response.Listener<String> listener,
+                         Response.ErrorListener errorListener) {
+        this(Method.GET, url, listener, errorListener);
+    }
+
+    /** 将HTTP请求结果转换为String. */
+    @Override
+    protected Response<String> parseNetworkResponse(NetworkResponse response) {
+        String parsed;
+
+        try {
+            parsed = new String(response.data, HttpHeaderParser.parseCharset(response.headers));
+        } catch (UnsupportedEncodingException e) {
+            parsed = new String(response.data);
+        }
+        return Response.success(parsed, HttpHeaderParser.parseCacheHeaders(response));
+    }
+
+    /** 将解析的String结果传递给用户的回调接口. */
+    @Override
+    protected void deliverResponse(String response) {
+        mListener.onResponse(response);
+    }
+}
 ```
 
 

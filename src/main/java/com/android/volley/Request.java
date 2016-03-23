@@ -190,7 +190,10 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         return Collections.emptyMap();
     }
 
-    /** 返回该request的请求体中参数，如果是GET请求，则直接返回null. */
+    /** 返回该request的请求体中参数.
+     * 如果是GET请求，则直接返回null.
+     * 如果是POST请求，需要重写该方法，返回需要传递的参数Map.
+     */
     protected Map<String, String> getParams() throws AuthFailureError {
         return null;
     }
