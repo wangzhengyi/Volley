@@ -23,7 +23,7 @@
 
 ****
 
-# Request.java
+# 网络请求抽象类
 
 Request类就是Volley抽象出来的网络请求类了。我已经对其进行了中文注解，大家可以直接看一下其实现代码：
 
@@ -385,4 +385,120 @@ public class StringRequest extends Request<String>{
 }
 ```
 
+有了这个StringRequest类示例，我们也可以参考其实现很方便的对Request类进行扩展。再对request进行扩展时，我们通常只需要实现两个方法即可：
 
+1. deliverResponse：这个方法很简单，就是将网络解析的结果传递给用户设置的回调接口.
+2. parseNetworkResponse : 这个方法比较关键，我们主要也是来重写该方法。如果我需要返回JsonObject，那么我就需要将参数NetworkResponse在该方法中转换成JsonObject.
+3. getParams : 这个方法是如果有POST参数时，需要重写该方法。
+
+介绍完Request抽象，那我们继续来看一下Response抽象。
+
+****
+
+# 网络请求结果抽象类
+
+## Response.java
+
+Response是Volley抽象出来对网络请求结果进行封装的类。具体注释源码如下：
+```java
+/** 网络请求结果的封装类.其中泛型T为网络解析结果. */
+public class Response<T> {
+    /** request请求成功回调接口, 用于用户自行处理网络请求返回的结果. */
+    public interface Listener<T> {
+        void onResponse(T response);
+    }
+
+    /** request请求失败回调接口，用于用户自行处理网络请求失败的情况. */
+    public interface ErrorListener {
+        void onErrorResponse(VolleyError error);
+    }
+
+    /** 构造一个request请求成功的response对象. */
+    public static <T> Response<T> success(T result, Cache.Entry cacheEntry) {
+        return new Response<T>(result, cacheEntry);
+    }
+
+    /** 构造一个request请求失败的response对象. */
+    public static <T> Response<T> error(VolleyError error) {
+        return new Response<T>(error);
+    }
+
+    /** request的网络请求解析结果. */
+    public final T result;
+
+    /** request的缓存内容. */
+    public final Cache.Entry cacheEntry;
+
+    /** 请求错误内容. */
+    public final VolleyError error;
+
+    /** 当前结果是否为中间请求结果. */
+    public boolean intermediate = false;
+
+    /** 返回当前request请求结果是否成功. */
+    public boolean isSuccess() {
+        return error == null;
+    }
+
+    private Response(T result, Cache.Entry cacheEntry) {
+        this.result = result;
+        this.cacheEntry = cacheEntry;
+        this.error = null;
+    }
+
+    private Response(VolleyError error) {
+        this.result = null;
+        this.cacheEntry = null;
+        this.error = error;
+    }
+}
+```
+
+其实，Response只是对request请求结果的进一步封装。真正的HTTP Request请求结果的抽象其实是NetworkResponse类。
+
+## NetworkResponse.java
+
+NetworkResponse类是真正的HTTP网络请求结果类，其注释源码如下：
+```java
+/** HTTP网络请求结果抽象类. */
+public class NetworkResponse {
+    /** HTTP响应状态码. */
+    public final int statusCode;
+
+    /** HTTP响应信息. */
+    public final byte[] data;
+
+    /** 服务器状态码304代表未修改 */
+    public final boolean notModified;
+
+    /** HTTP请求的往返延迟. */
+    public final long networkTimeMs;
+
+    /** HTTP响应头信息. */
+    public final Map<String, String> headers;
+    
+    public NetworkResponse(int statusCode, byte[] data, Map<String, String> headers,
+                           boolean notModified, long networkTimeMs) {
+        this.statusCode = statusCode;
+        this.data = data;
+        this.headers = headers;
+        this.notModified = notModified;
+        this.networkTimeMs = networkTimeMs;
+    }
+
+    public NetworkResponse(int statusCode, byte[] data, Map<String, String> headers,
+                           boolean notModified) {
+        this(statusCode, data, headers, notModified, 0);
+    }
+
+    public NetworkResponse(byte[] data) {
+        this(HttpURLConnection.HTTP_OK, data, Collections.<String, String>emptyMap(), false, 0);
+    }
+
+    public NetworkResponse(byte[] data, Map<String, String> headers) {
+        this(HttpURLConnection.HTTP_OK, data, headers, false, 0);
+    }
+}
+```
+
+****

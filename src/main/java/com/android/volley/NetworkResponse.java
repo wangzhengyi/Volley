@@ -4,43 +4,23 @@ import java.net.HttpURLConnection;
 import java.util.Collections;
 import java.util.Map;
 
-/**
- * Data and headers returned form request.
- */
+/** HTTP网络请求结果抽象类. */
 public class NetworkResponse {
-    /**
-     * The HTTP status code.
-     */
+    /** HTTP响应状态码. */
     public final int statusCode;
 
-    /**
-     * Raw data from this response.
-     */
+    /** HTTP响应信息. */
     public final byte[] data;
 
-    /**
-     * True if the server returned a 304.
-     */
+    /** 服务器状态码304代表未修改 */
     public final boolean notModified;
 
-    /**
-     * Network roundtrip time in milliseconds.
-     */
+    /** HTTP请求的往返延迟. */
     public final long networkTimeMs;
 
-    /**
-     * Response headers.
-     */
+    /** HTTP响应头信息. */
     public final Map<String, String> headers;
 
-    /**
-     * Create a new network response.
-     * @param statusCode the HTTP status code
-     * @param data Response body
-     * @param headers Headers returned with this response, or null for one
-     * @param notModified True if the server returned a 304 and the data was already in cache
-     * @param networkTimeMs Round-trip network time to receive network response
-     */
     public NetworkResponse(int statusCode, byte[] data, Map<String, String> headers,
                            boolean notModified, long networkTimeMs) {
         this.statusCode = statusCode;
