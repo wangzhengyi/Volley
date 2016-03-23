@@ -9,7 +9,7 @@ public class NetworkResponse {
     /** HTTP响应状态码. */
     public final int statusCode;
 
-    /** HTTP响应信息. */
+    /** HTTP Body 响应信息. */
     public final byte[] data;
 
     /** 服务器状态码304代表未修改 */
