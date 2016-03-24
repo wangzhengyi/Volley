@@ -6,7 +6,6 @@ import android.os.Looper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -15,22 +14,17 @@ import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * A request dispatch queue with a thread pool of dispatchers.
- */
+/** Request请求调度队列. */
+@SuppressWarnings("unused")
 public class RequestQueue {
-
-
     /**
      * Callback interface for completed requests.
      */
-    public static interface RequestFinishedListener<T> {
+    public interface RequestFinishedListener<T> {
         void onRequestFinished(Request<T> request);
     }
 
-    /**
-     * Used for generating monotonically-increasing sequence numbers for requests.
-     */
+    /** 为每一个request申请独立的序列号. */
     private AtomicInteger mSequenceGenerator = new AtomicInteger();
 
     /**
@@ -39,9 +33,7 @@ public class RequestQueue {
     private final Map<String, Queue<Request<?>>> mWaitingRequests =
             new HashMap<String, Queue<Request<?>>>();
 
-    /**
-     * The set of all requests currently being processed by this requestQueue.
-     */
+    /** 保存所有被加入到当前队列的request集合. */
     private final Set<Request<?>> mCurrentRequests = new HashSet<Request<?>>();
 
     /**
@@ -50,15 +42,11 @@ public class RequestQueue {
     private final PriorityBlockingQueue<Request<?>> mCacheQueue =
             new PriorityBlockingQueue<Request<?>>();
 
-    /**
-     * The queue of requests that are actually going out to the network.
-     */
+    /** 存储需要进行网络通信的request的存储队列. */
     private final PriorityBlockingQueue<Request<?>> mNetworkQueue =
             new PriorityBlockingQueue<Request<?>>();
 
-    /**
-     * Number of network request dispatcher threads to start.
-     */
+    /** RequestQueue默认开启的网络线程的数量. */
     private static final int DEFAULT_NETWORK_THREAD_POOL_SIZE = 4;
 
     /**
@@ -66,48 +54,20 @@ public class RequestQueue {
      */
     private final Cache mCache;
 
-    /**
-     * Network interface for performing requests.
-     */
+    /** 封装request网络请求的Network类. */
     private final Network mNetwork;
 
+    /** 网络请求传输结果实现类. */
     private final ResponseDelivery mDelivery;
 
-    /**
-     * The network dispatchers.
-     */
+    /** 网络请求线程数组. */
     private NetworkDispatcher[] mDispatchers;
 
-    /**
-     * The cache dispatcher.
-     */
+    /** 缓存线程 */
     private CacheDispatcher mCacheDispatcher;
 
     private List<RequestFinishedListener> mFinishedListeners =
             new ArrayList<RequestFinishedListener>();
-
-    <T> void finish(Request<T> request) {
-        // Remove from the set of requests currently being processed.
-        synchronized (mCurrentRequests) {
-            mCurrentRequests.remove(request);
-        }
-
-        synchronized (mFinishedListeners) {
-            for (RequestFinishedListener<T> listener : mFinishedListeners) {
-                listener.onRequestFinished(request);
-            }
-        }
-
-        if (request.shouldCache()) {
-            synchronized (mWaitingRequests) {
-                String cacheKey = request.getCacheKey();
-                Queue<Request<?>> waitingRequests = mWaitingRequests.remove(cacheKey);
-                if (waitingRequests != null) {
-                    mCacheQueue.addAll(waitingRequests);
-                }
-            }
-        }
-    }
 
     public RequestQueue(Cache cache, Network network) {
         this(cache, network, DEFAULT_NETWORK_THREAD_POOL_SIZE);
@@ -133,17 +93,18 @@ public class RequestQueue {
         mDelivery = delivery;
     }
 
-    /**
-     * Starts the dispatchers in this queue.
-     */
+    /** 开启request的缓存线程和多个网络请求线程 */
     public void start() {
-        stop(); // Make sure any currently running dispatchers are stopped.
+        // 关闭所有正在运行的缓存线程和网络请求线程.
+        stop();
         // Create the cache dispatcher and start it
         mCacheDispatcher = new CacheDispatcher(mCacheQueue, mNetworkQueue, mCache, mDelivery);
         mCacheDispatcher.start();
 
-        // Create network dispatchers (and corresponding threads) up to the pool size.
+        // 默认开启DEFAULT_NETWORK_THREAD_POOL_SIZE(4)个线程来执行request网络请求.
         for (int i = 0; i < mDispatchers.length; i ++) {
+            // 将NetworkDispatcher线程与mNetworkQueue这个队列进行绑定.
+            // NetworkDispatcher会使用生产者-消费者模型从mNetworkQueue获取request请求，并执行.
             NetworkDispatcher networkDispatcher = new NetworkDispatcher(mNetworkQueue, mNetwork,
                     mCache, mDelivery);
             mDispatchers[i] = networkDispatcher;
@@ -151,26 +112,20 @@ public class RequestQueue {
         }
     }
 
-    /**
-     * Stops the cache and network dispatchers.
-     */
+    /** 停止所有的缓存线程和网络请求线程. */
     private void stop() {
         if (mCacheDispatcher != null) {
             mCacheDispatcher.quit();
         }
 
-        for (int i = 0; i < mDispatchers.length; i ++) {
-            if (mDispatchers[i] != null) {
-                mDispatchers[i].quit();
+        for (NetworkDispatcher dispatcher : mDispatchers) {
+            if (dispatcher != null) {
+                dispatcher.quit();
             }
         }
     }
 
-    /**
-     * Adds a Request to the dispatch queue.
-     * @param request The request to service
-     * @return The passed-in request
-     */
+    /** 将Request请求加入到调度队列中. */
     public <T> Request<?> add(Request<T> request) {
         // Tag the request as belonging to this queue and add it to the set of current requests.
         request.setRequestQueue(this);
@@ -178,11 +133,10 @@ public class RequestQueue {
             mCurrentRequests.add(request);
         }
 
-        // Process requests in the order they are added.
+        // 分配request唯一的序列号.
         request.setSequence(getSequenceNumber());
-        request.addMarker("add-to-queue");
 
-        // If the request is uncacheable, skip the cache queue and go straight to the network.
+        // request不允许缓存,则直接将request加入到mNetworkQueue当中
         if (!request.shouldCache()) {
             mNetworkQueue.add(request);
             return request;
@@ -209,10 +163,43 @@ public class RequestQueue {
         }
     }
 
-    /**
-     * Gets a sequence number.
-     */
+    /** 提供request请求序列号. */
     private int getSequenceNumber() {
         return mSequenceGenerator.incrementAndGet();
+    }
+
+    <T> void finish(Request<T> request) {
+        // Remove from the set of requests currently being processed.
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.remove(request);
+        }
+
+        synchronized (mFinishedListeners) {
+            for (RequestFinishedListener<T> listener : mFinishedListeners) {
+                listener.onRequestFinished(request);
+            }
+        }
+
+        if (request.shouldCache()) {
+            synchronized (mWaitingRequests) {
+                String cacheKey = request.getCacheKey();
+                Queue<Request<?>> waitingRequests = mWaitingRequests.remove(cacheKey);
+                if (waitingRequests != null) {
+                    mCacheQueue.addAll(waitingRequests);
+                }
+            }
+        }
+    }
+
+    public <T> void addRequestFinishedListener(RequestFinishedListener<T> listener) {
+        synchronized (mFinishedListeners) {
+            mFinishedListeners.add(listener);
+        }
+    }
+
+    public <T> void removeRequestFinishedListener(RequestFinishedListener<T> listener) {
+        synchronized (mFinishedListeners) {
+            mFinishedListeners.remove(listener);
+        }
     }
 }

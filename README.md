@@ -945,12 +945,153 @@ public class BasicNetwork implements Network {
 ```
 ## RequestQueue.java
 
-RequestQueue是Volley框架的核心类，用户在使用Volley时，就是将一个Request加入到RequestQueue来完成请求操作的。所以，RequestQueue即提供了request存储，也是调度NetworkDispatcher的核心.
+RequestQueue是Volley框架的核心类，用户在使用Volley时，就是将一个Request加入到RequestQueue来完成请求操作的。所以，RequestQueue既是request的存储仓库，也是NetworkDispatcher的调度核心.
+由于RequestQueue其中还包括Volley的缓存机制，我们稍后会对缓存机制进行讲解，所以这里只看跟NetworkDispatcher调度相关的源码。
 
 RequestQueue类的注释代码如下：
 ```java
+/** Request请求调度队列. */
+@SuppressWarnings("unused")
+public class RequestQueue {
+    /**
+     * Callback interface for completed requests.
+     */
+    public interface RequestFinishedListener<T> {
+        void onRequestFinished(Request<T> request);
+    }
 
+    /** 为每一个request申请独立的序列号. */
+    private AtomicInteger mSequenceGenerator = new AtomicInteger();
+
+    /**
+     * Staging area for requests that already have a duplicate request in flight.
+     */
+    private final Map<String, Queue<Request<?>>> mWaitingRequests =
+            new HashMap<String, Queue<Request<?>>>();
+
+    /** 保存所有被加入到当前队列的request集合. */
+    private final Set<Request<?>> mCurrentRequests = new HashSet<Request<?>>();
+
+    /**
+     * The cache triage queue.
+     */
+    private final PriorityBlockingQueue<Request<?>> mCacheQueue =
+            new PriorityBlockingQueue<Request<?>>();
+
+    /** 存储需要进行网络通信的request的存储队列. */
+    private final PriorityBlockingQueue<Request<?>> mNetworkQueue =
+            new PriorityBlockingQueue<Request<?>>();
+
+    /** RequestQueue默认开启的网络线程的数量. */
+    private static final int DEFAULT_NETWORK_THREAD_POOL_SIZE = 4;
+
+    /**
+     * Cache interface for retrieving and storing responses.
+     */
+    private final Cache mCache;
+
+    /** 封装request网络请求的Network类. */
+    private final Network mNetwork;
+
+    /** 网络请求传输结果实现类. */
+    private final ResponseDelivery mDelivery;
+
+    /** 网络请求线程数组. */
+    private NetworkDispatcher[] mDispatchers;
+
+    /** 缓存线程 */
+    private CacheDispatcher mCacheDispatcher;
+
+    private List<RequestFinishedListener> mFinishedListeners =
+            new ArrayList<RequestFinishedListener>();
+
+    public RequestQueue(Cache cache, Network network) {
+        this(cache, network, DEFAULT_NETWORK_THREAD_POOL_SIZE);
+    }
+
+    public RequestQueue(Cache cache, Network network, int threadPoolSize) {
+        this(cache, network, threadPoolSize,
+                new ExecutorDelivery(new Handler(Looper.getMainLooper())));
+    }
+
+    /**
+     * Creates the worker pool.
+     * @param cache A cache to use for persisting responses to disk
+     * @param network A Network interface for performing HTTP requests
+     * @param threadPoolSize Number of network dispatcher threads to create
+     * @param delivery A ResponseDelivery interface for posting responses and errors
+     */
+    public RequestQueue(Cache cache, Network network, int threadPoolSize,
+                        ResponseDelivery delivery) {
+        mCache = cache;
+        mNetwork = network;
+        mDispatchers = new NetworkDispatcher[threadPoolSize];
+        mDelivery = delivery;
+    }
+
+    /** 开启request的缓存线程和多个网络请求线程 */
+    public void start() {
+        // 关闭所有正在运行的缓存线程和网络请求线程.
+        stop();
+
+        // 默认开启DEFAULT_NETWORK_THREAD_POOL_SIZE(4)个线程来执行request网络请求.
+        for (int i = 0; i < mDispatchers.length; i ++) {
+            // 将NetworkDispatcher线程与mNetworkQueue这个队列进行绑定.
+            // NetworkDispatcher会使用生产者-消费者模型从mNetworkQueue获取request请求，并执行.
+            NetworkDispatcher networkDispatcher = new NetworkDispatcher(mNetworkQueue, mNetwork,
+                    mCache, mDelivery);
+            mDispatchers[i] = networkDispatcher;
+            networkDispatcher.start();
+        }
+    }
+
+    /** 停止所有的缓存线程和网络请求线程. */
+    private void stop() {
+        for (NetworkDispatcher dispatcher : mDispatchers) {
+            if (dispatcher != null) {
+                dispatcher.quit();
+            }
+        }
+    }
+
+    /** 将Request请求加入到调度队列中. */
+    public <T> Request<?> add(Request<T> request) {
+        // Tag the request as belonging to this queue and add it to the set of current requests.
+        request.setRequestQueue(this);
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.add(request);
+        }
+
+        // 分配request唯一的序列号.
+        request.setSequence(getSequenceNumber());
+
+        // request不允许缓存,则直接将request加入到mNetworkQueue当中
+        if (!request.shouldCache()) {
+            mNetworkQueue.add(request);
+            return request;
+        }
+    }
+
+    /** 提供request请求序列号. */
+    private int getSequenceNumber() {
+        return mSequenceGenerator.incrementAndGet();
+    }
+}
 ```
+RequestQueue在构造函数中，会默认生成4个NetworkDispatcher线程，并且将NetworkDispatcher线程与mNetworkQueue进行绑定,然后start NetworkDispatcher执行网络请求操作.
+
+## 异步
+
+前面已经详细讲解了一个Request是如何被并发处理的，那现在回到我们的3-4问题，子线程中并发处理的结果如何异步传递给用户设置的Listener回调接口.
+从NetworkDispatcher最后传递结果的代码：
+```java
+request.markDelivered();
+mDelivery.postResponse(request, response);
+```
+我们就可以看出，异步回调是通过ResponseDelivery类实现的.
+
+### ResponseDelivery.java
+
 
 
 

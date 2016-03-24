@@ -2,8 +2,6 @@ package com.android.volley;
 
 import android.os.Handler;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
