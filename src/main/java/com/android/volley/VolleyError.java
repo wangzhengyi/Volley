@@ -3,6 +3,7 @@ package com.android.volley;
 /**
  * Exception style class encapsulating Volley errors.
  */
+@SuppressWarnings("unused")
 public class VolleyError extends Exception{
     public final NetworkResponse networkResponse;
     private long networkTimeMs;

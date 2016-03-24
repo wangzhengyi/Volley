@@ -1,8 +1,6 @@
 package com.android.volley;
 
-/**
- * Created by wzy on 16-3-20.
- */
+/** 网络结果分发接口类. */
 public interface ResponseDelivery {
     /**
      * Parses a response from the network or cache and delivers it.

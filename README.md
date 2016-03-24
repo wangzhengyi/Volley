@@ -658,16 +658,16 @@ public class NetworkDispatcher extends Thread{
     /** 网络请求队列. */
     private final BlockingQueue<Request<?>> mQueue;
 
-    /** 封装了HurlStack的网络类，其performRequest方法是单个request请求真正执行的地方. */
+    /** 封装了HurlStack的网络类,其performRequest方法是单个request请求真正执行的地方. */
     private final Network mNetwork;
 
-    /** 缓存类，存储请求结果的缓存. */
+    /** 缓存类,存储请求结果的缓存. */
     private final Cache mCache;
 
     /** 请求结果传递类. */
     private final ResponseDelivery mDelivery;
 
-    /** 暂停线程的标志位，替换Thread自身的stop方法. */
+    /** 暂停线程的标志位,替换Thread自身的stop方法. */
     private volatile boolean mQuit = false;
 
     /** 构造网络请求调度线程类. */
@@ -760,22 +760,22 @@ public class NetworkDispatcher extends Thread{
     }
 }
 ```
-这里还有一点需要说明，NetworkDispatcher真正执行Http request请求时，并不是直接使用HurlStack类的performRequest方法，而是又对其进行了一个封装，封装成了Network类。
+这里还有一点需要说明,NetworkDispatcher真正执行Http request请求时,并不是直接使用HurlStack类的performRequest方法,而是又对其进行了一个封装,封装成了Network类.
 
 ## Network.java
 
 Network.java的源码如下：
 ```java
-/** 网络接口，处理网络请求 */
+/** 网络接口,处理网络请求 */
 public interface Network {
     NetworkResponse performRequest(Request<?> request) throws VolleyError;
 }
 ```
-可以看到，Network有一个子类需要实现的方法，和HurlStack的具体执行HTTP请求的方法的名称是一样的。那为什么Volley要多此一举对HurlStack进行进一步封装呢？
-> 1. 这是因为Volley向下兼容到Android2.3之下的版本，而Android2.3以下的版本构造Http请求时推荐使用的是HttpClient类，所以这里Volley做了一个适配器模式的封装。也就是说，HurlStack类只需要负责对HttpURLConnection进行封装，HttpClientStack只需要对HttpClient类进行封装。
-> 2. 封装更多的处理操作。包括：缓存新鲜度验证、超时重试等。
+可以看到,Network有一个子类需要实现的方法,和HurlStack的具体执行HTTP请求的方法的名称是一样的.那为什么Volley要多此一举对HurlStack进行进一步封装呢？
+> 1. 这是因为Volley向下兼容到Android2.3之下的版本,而Android2.3以下的版本构造Http请求时推荐使用的是HttpClient类,所以这里Volley做了一个适配器模式的封装.也就是说,HurlStack类只需要负责对HttpURLConnection进行封装,HttpClientStack只需要对HttpClient类进行封装.
+> 2. 封装更多的处理操作.包括：缓存新鲜度验证、超时重试等.
 
-至于Network接口的具体实现类是BasicNetwork类，其注释源码如下：
+至于Network接口的具体实现类是BasicNetwork类,其注释源码如下：
 ```java
 /** Volley默认的网络接口实现类. */
 public class BasicNetwork implements Network {
@@ -840,7 +840,7 @@ public class BasicNetwork implements Network {
                 return new NetworkResponse(statusCode, responseContents, responseHeaders, false,
                         SystemClock.elapsedRealtime() - requestStart);
             } catch (SocketTimeoutException e) {
-                // 捕获各种异常，进行重试操作.
+                // 捕获各种异常,进行重试操作.
                 attemptRetryOnException("socket", request, new TimeoutError());
             } catch (ConnectTimeoutException E) {
                 attemptRetryOnException("connection", request, new TimeoutError());
@@ -906,7 +906,7 @@ public class BasicNetwork implements Network {
 
     /**
      * 将服务器返回的InputStream输入流转换成byte数组.
-     * 这个函数让我实现的话，我会使用StringBuffer来替换ByteArrayOutputStream来实现字符串拼接.
+     * 这个函数让我实现的话,我会使用StringBuffer来替换ByteArrayOutputStream来实现字符串拼接.
      */
     private byte[] entityToBytes(HttpEntity entity) throws IOException, ServerError {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -945,8 +945,8 @@ public class BasicNetwork implements Network {
 ```
 ## RequestQueue.java
 
-RequestQueue是Volley框架的核心类，用户在使用Volley时，就是将一个Request加入到RequestQueue来完成请求操作的。所以，RequestQueue既是request的存储仓库，也是NetworkDispatcher的调度核心.
-由于RequestQueue其中还包括Volley的缓存机制，我们稍后会对缓存机制进行讲解，所以这里只看跟NetworkDispatcher调度相关的源码。
+RequestQueue是Volley框架的核心类,用户在使用Volley时,就是将一个Request加入到RequestQueue来完成请求操作的.所以,RequestQueue既是request的存储仓库,也是NetworkDispatcher的调度核心.
+由于RequestQueue其中还包括Volley的缓存机制,我们稍后会对缓存机制进行讲解,所以这里只看跟NetworkDispatcher调度相关的源码.
 
 RequestQueue类的注释代码如下：
 ```java
@@ -1037,7 +1037,7 @@ public class RequestQueue {
         // 默认开启DEFAULT_NETWORK_THREAD_POOL_SIZE(4)个线程来执行request网络请求.
         for (int i = 0; i < mDispatchers.length; i ++) {
             // 将NetworkDispatcher线程与mNetworkQueue这个队列进行绑定.
-            // NetworkDispatcher会使用生产者-消费者模型从mNetworkQueue获取request请求，并执行.
+            // NetworkDispatcher会使用生产者-消费者模型从mNetworkQueue获取request请求,并执行.
             NetworkDispatcher networkDispatcher = new NetworkDispatcher(mNetworkQueue, mNetwork,
                     mCache, mDelivery);
             mDispatchers[i] = networkDispatcher;
@@ -1078,20 +1078,138 @@ public class RequestQueue {
     }
 }
 ```
-RequestQueue在构造函数中，会默认生成4个NetworkDispatcher线程，并且将NetworkDispatcher线程与mNetworkQueue进行绑定,然后start NetworkDispatcher执行网络请求操作.
+RequestQueue在构造函数中,会默认生成4个NetworkDispatcher线程,并且将NetworkDispatcher线程与mNetworkQueue进行绑定,然后start NetworkDispatcher执行网络请求操作.
 
 ## 异步
 
-前面已经详细讲解了一个Request是如何被并发处理的，那现在回到我们的3-4问题，子线程中并发处理的结果如何异步传递给用户设置的Listener回调接口.
+前面已经详细讲解了一个Request是如何被并发处理的,那现在回到我们的3-4问题,子线程中并发处理的结果如何异步传递给用户设置的Listener回调接口.
 从NetworkDispatcher最后传递结果的代码：
 ```java
 request.markDelivered();
 mDelivery.postResponse(request, response);
 ```
-我们就可以看出，异步回调是通过ResponseDelivery类实现的.
+我们就可以看出,异步回调是通过ResponseDelivery类实现的.
 
 ### ResponseDelivery.java
 
+ResponseDelivery的中文注释源码如下：
+```java
+/** 网络结果分发接口类. */
+public interface ResponseDelivery {
+    /**
+     * Parses a response from the network or cache and delivers it.
+     */
+    void postResponse(Request<?> request, Response<?> response);
+
+    /**
+     * Parses a response from the network or cache and delivers it.
+     */
+    void postResponse(Request<?> request, Response<?> response, Runnable runnable);
+
+    /**
+     * Posts an error for the given request.
+     */
+    void postError(Request<?> request, VolleyError error);
+}
+```
+
+在RequestQueue中,ResponseDelivery的实现类为ExecutorDelivery类.
+
+### ExecutorDelivery
+
+众所周知,Android中实现异步肯定是需要用到Handler、Looper和Message机制的.ExecutorDelivery的实现异步的机制也是居于Handler机制.
+我们先来看一下,RequestQueue中ExecutorDelivery是如何被构造的:
+```java
+ResponseDelivery delivery = new ExecutorDelivery(new Handler(Looper.getMainLooper()));
+```
+可以看到，RequestQueue将绑定主线程Looper对象的Handler对象传递给了ExecutorDelivery，这样我们通过handler发送的消息其实都是在主线程进行处理了。
+ExecutorDelivery的中文注释源码如下:
+```java
+/**
+ * 网络请求结果传递类.(实现异步功能，主线程传递数据给子线程)
+ */
+@SuppressWarnings("unused")
+public class ExecutorDelivery implements ResponseDelivery {
+    /**
+     * 构造执行已提交的Runnable任务对象.
+     */
+    private final Executor mResponsePoster;
+
+    public ExecutorDelivery(final Handler handler) {
+        mResponsePoster = new Executor() {
+            @Override
+            public void execute(@NonNull Runnable command) {
+                // 所有的Runnable通过绑定主线程Looper的Handler对象最终在主线程执行.
+                handler.post(command);
+            }
+        };
+    }
+
+    public ExecutorDelivery(Executor executor) {
+        mResponsePoster = executor;
+    }
+
+    @Override
+    public void postResponse(Request<?> request, Response<?> response) {
+        postResponse(request, response, null);
+    }
+
+    @Override
+    public void postResponse(Request<?> request, Response<?> response, Runnable runnable) {
+        request.markDelivered();
+        mResponsePoster.execute(
+                new ResponseDeliveryRunnable(request, response, runnable)
+        );
+    }
+
+    @Override
+    public void postError(Request<?> request, VolleyError error) {
+        Response<?> response = Response.error(error);
+        mResponsePoster.execute(new ResponseDeliveryRunnable(request, response, null));
+    }
+
+    /** 在主线程执行的Runnable类 */
+    @SuppressWarnings("unchecked")
+    private class ResponseDeliveryRunnable implements Runnable {
+        private final Request mRequest;
+        private final Response mResponse;
+        private final Runnable mRunnable;
+
+        public ResponseDeliveryRunnable(Request request, Response response, Runnable runnable) {
+            mRequest = request;
+            mResponse = response;
+            mRunnable = runnable;
+        }
+
+        @Override
+        public void run() {
+            // 如果request被取消，则不回调用户设置的Listener接口
+            if (mRequest.isCanceled()) {
+                mRequest.finish("canceled-at-delivery");
+                return;
+            }
+
+            // 通过response状态标志，来判断是回调用户设置的Listener接口还是ErrorListener接口
+            if (mResponse.isSuccess()) {
+                mRequest.deliverResponse(mResponse.result);
+            } else {
+                mRequest.deliverError(mResponse.error);
+            }
+
+            if (mResponse.intermediate) {
+                mRequest.addMarker("intermediate-response");
+            } else {
+                // 通知RequestQueue终止该Request请求
+                mRequest.finish("done");
+            }
+
+            if (mRunnable != null) {
+                mRunnable.run();
+            }
+        }
+    }
+}
+```
 
 
 

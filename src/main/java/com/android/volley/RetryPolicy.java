@@ -3,6 +3,7 @@ package com.android.volley;
 /**
  * Retry policy for a request.
  */
+@SuppressWarnings("unused")
 public interface RetryPolicy {
     /**
      * Returns the current timeout (used for logging).
