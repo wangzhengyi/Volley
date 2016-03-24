@@ -1,6 +1,7 @@
 package com.android.volley.toolbox;
 
 import android.os.SystemClock;
+import android.util.Log;
 
 import com.android.volley.AuthFailureError;
 import com.android.volley.Cache;
@@ -34,21 +35,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-/**
- * A network performing Volley requests over an {@link HttpStack}.
- */
+/** Volley默认的网络接口实现类. */
 public class BasicNetwork implements Network {
-    private static final int DEFAULT_POOL_SIZE = 4096;
+    /** 网络请求真正实现类. */
     private final HttpStack mHttpStack;
-    private final ByteArrayPool mPool;
 
     public BasicNetwork(HttpStack httpStack) {
-        this(httpStack, new ByteArrayPool(DEFAULT_POOL_SIZE));
-    }
-
-    public BasicNetwork(HttpStack httpStack, ByteArrayPool pool) {
         mHttpStack = httpStack;
-        mPool = pool;
     }
 
     @Override
@@ -59,14 +52,21 @@ public class BasicNetwork implements Network {
             byte[] responseContents = null;
             Map<String, String> responseHeaders = Collections.emptyMap();
             try {
+                // 构造Cache的HTTP headers,主要是添加If-None-Match和If-Modified-Since两个字段
+                // 当客户端发送的是一个条件验证请求时,服务器可能返回304状态码.
+                // If-Modified-Since：代表服务器上次修改是的日期值.
+                // If-None-Match：服务器上次返回的ETag响应头的值.
                 Map<String, String> headers = new HashMap<String, String>();
                 addCacheHeaders(headers, request.getCacheEntry());
+
+                // 调用HurlStack的performRequest方法执行网络请求, 并将请求结果存入httpResponse变量中
                 httpResponse = mHttpStack.performRequest(request, headers);
+
                 StatusLine statusLine = httpResponse.getStatusLine();
                 int statusCode = statusLine.getStatusCode();
-
                 responseHeaders = convertHeaders(httpResponse.getAllHeaders());
-                // Handle cache validation
+
+                // 当服务端返回304状态码时,直接将Volley缓存中结果返回
                 if (statusCode == HttpStatus.SC_NOT_MODIFIED) {
                     Cache.Entry entry = request.getCacheEntry();
                     if (entry == null) {
@@ -98,6 +98,7 @@ public class BasicNetwork implements Network {
                 return new NetworkResponse(statusCode, responseContents, responseHeaders, false,
                         SystemClock.elapsedRealtime() - requestStart);
             } catch (SocketTimeoutException e) {
+                // 捕获各种异常，进行重试操作.
                 attemptRetryOnException("socket", request, new TimeoutError());
             } catch (ConnectTimeoutException E) {
                 attemptRetryOnException("connection", request, new TimeoutError());
@@ -138,19 +139,33 @@ public class BasicNetwork implements Network {
         }
     }
 
-    private void attemptRetryOnException(String logPrefix, Request<?> request,
-                                         VolleyError exception) throws VolleyError{
-        RetryPolicy retryPolicy = request.getRetryPolicy();
-        int oldTimeout = request.getTimeoutMs();
-
-        try {
-            retryPolicy.retry(exception);
-        } catch (VolleyError e) {
-            throw e;
+    private void addCacheHeaders(Map<String, String> headers, Cache.Entry entry) {
+        if (entry == null) {
+            return;
         }
-        request.addMarker(String.format("%s-retry [timeout=%s]", logPrefix, oldTimeout));
+
+        if (entry.etag != null) {
+            headers.put("If-None-Match", entry.etag);
+        }
+
+        if (entry.lastModified > 0) {
+            Date refTime = new Date(entry.lastModified);
+            headers.put("If-modified-Since", DateUtils.formatDate(refTime));
+        }
     }
 
+    private static Map<String, String> convertHeaders(Header[] headers) {
+        Map<String, String> result = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+        for (Header header : headers) {
+            result.put(header.getName(), header.getValue());
+        }
+        return result;
+    }
+
+    /**
+     * 将服务器返回的InputStream输入流转换成byte数组.
+     * 这个函数让我实现的话，我会使用StringBuffer来替换ByteArrayOutputStream来实现字符串拼接.
+     */
     private byte[] entityToBytes(HttpEntity entity) throws IOException, ServerError {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 
@@ -176,26 +191,12 @@ public class BasicNetwork implements Network {
         }
     }
 
-    private static Map<String, String> convertHeaders(Header[] headers) {
-        Map<String, String> result = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
-        for (int i = 0; i < headers.length; i ++) {
-            result.put(headers[i].getName(), headers[i].getValue());
-        }
-        return result;
-    }
+    private void attemptRetryOnException(String logPrefix, Request<?> request,
+                                         VolleyError exception) throws VolleyError{
+        RetryPolicy retryPolicy = request.getRetryPolicy();
+        int oldTimeout = request.getTimeoutMs();
 
-    private void addCacheHeaders(Map<String, String> headers, Cache.Entry entry) {
-        if (entry == null) {
-            return;
-        }
-
-        if (entry.etag != null) {
-            headers.put("If-None-Match", entry.etag);
-        }
-
-        if (entry.lastModified > 0) {
-            Date refTime = new Date(entry.lastModified);
-            headers.put("If-modified-Since", DateUtils.formatDate(refTime));
-        }
+        retryPolicy.retry(exception);
+        Log.e("Volley", String.format("%s-retry [timeout=%s]", logPrefix, oldTimeout));
     }
 }
