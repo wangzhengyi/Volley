@@ -15,16 +15,16 @@ public class NetworkDispatcher extends Thread{
     /** 封装了HurlStack的网络类，其performRequest方法是单个request请求真正执行的地方. */
     private final Network mNetwork;
 
-    /** 缓存类，存储请求结果的缓存。 */
+    /** 缓存类，存储请求结果的缓存. */
     private final Cache mCache;
 
-    /** 请求结果传递类。 */
+    /** 请求结果传递类. */
     private final ResponseDelivery mDelivery;
 
     /** 暂停线程的标志位，替换Thread自身的stop方法. */
     private volatile boolean mQuit = false;
 
-    /** 构造网络请求调度线程类。 */
+    /** 构造网络请求调度线程类. */
     public NetworkDispatcher(BlockingQueue<Request<?>> queue,
                              Network network, Cache cache, ResponseDelivery delivery) {
         mQueue = queue;
@@ -33,7 +33,7 @@ public class NetworkDispatcher extends Thread{
         mDelivery = delivery;
     }
 
-    /** 强制停止当前调度线程。 */
+    /** 强制停止当前调度线程. */
     public void quit() {
         mQuit = true;
         interrupt();
@@ -47,7 +47,7 @@ public class NetworkDispatcher extends Thread{
             Request<?> request;
             try {
                 // 使用BlockingQueue实现了生产者-消费者模型.
-                // 消费者是该调度线程。
+                // 消费者是该调度线程.
                 // 生产者是request网络请求.
                 request = mQueue.take();
             } catch (InterruptedException e) {
