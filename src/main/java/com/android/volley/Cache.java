@@ -3,69 +3,54 @@ package com.android.volley;
 import java.util.Collections;
 import java.util.Map;
 
-/**
- * An interface for a cache keyed by a String with a byte array as data.
- */
+/** 缓存内存的抽象接口 */
+@SuppressWarnings("unused")
 public interface Cache {
+    /** 通过key获取请求的缓存实体. */
     Entry get(String key);
 
+    /** 存入一个请求的缓存实体. */
     void put(String key, Entry entry);
 
     void initialize();
 
     void invalidate(String key, boolean fullExpire);
 
+    /** 移除指定的缓存实体. */
     void remove(String key);
 
+    /** 清空缓存. */
     void clear();
 
-    public static class Entry {
-        /**
-         * The data returned from cache.
-         */
+    /** 真正HTTP请求缓存实体类. */
+    class Entry {
+        /** HTTP响应体. */
         public byte[] data;
 
-        /**
-         * ETag for cache coherency.
-         */
+        /** HTTP响应首部中用于缓存新鲜度验证的ETag. */
         public String etag;
 
-        /**
-         * Date of this response as reported by the server.
-         */
+        /** HTTP响应时间. */
         public long serverDate;
 
-        /**
-         * The last modified data for the requested object.
-         */
+        /** 缓存内容最后一次修改的时间. */
         public long lastModified;
 
-        /**
-         * TTL for this record.
-         */
+        /** Request的缓存过期时间. */
         public long ttl;
 
-        /**
-         * Soft TTL for this record.
-         */
+        /** Request的缓存新鲜时间. */
         public long softTtl;
 
-        /**
-         * Immutable response headers as received from server;
-         * must be non-null.
-         */
+        /** HTTP响应Headers. */
         public Map<String, String> responseHeaders = Collections.emptyMap();
 
-        /**
-         * True if the entry is expired.
-         */
+        /** 判断缓存内容是否过期. */
         public boolean isExpired() {
             return this.ttl < System.currentTimeMillis();
         }
 
-        /**
-         * True if a refresh is needed from the original data source.
-         */
+        /** 判断缓存是否新鲜，不新鲜的缓存需要发到服务端做新鲜度的检测. */
         public boolean refreshNeeded() {
             return this.softTtl < System.currentTimeMillis();
         }

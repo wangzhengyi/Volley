@@ -1211,5 +1211,73 @@ public class ExecutorDelivery implements ResponseDelivery {
 }
 ```
 
+# 缓存机制
+
+前面讲解了并发和异步的实现，接下来，我们就来看一下Volley的缓存机制。再学习Volley缓存实现方案之前，我们先来感受一下Google I/O大会上Volley官方一张宣传图片：
+![Volley](https://github.com/wangzhengyi/Volley/raw/master/picture/volley.jpg)
+
+这张图片非常形象的表达了Volley适合频繁的网络请求。接下来，我们就从Volley的缓存系统入手，介绍一下为什么Volley适合频繁的网络请求.
+
+## Cache.java
+
+既然要缓存Request请求，那我们首先就需要抽象出缓存对象。而Cache类就是对缓存对象的抽象描述:
+```java
+/** 缓存内存的抽象接口 */
+@SuppressWarnings("unused")
+public interface Cache {
+    /** 通过key获取请求的缓存实体. */
+    Entry get(String key);
+
+    /** 存入一个请求的缓存实体. */
+    void put(String key, Entry entry);
+
+    void initialize();
+
+    void invalidate(String key, boolean fullExpire);
+
+    /** 移除指定的缓存实体. */
+    void remove(String key);
+
+    /** 清空缓存. */
+    void clear();
+
+    /** 真正HTTP请求缓存实体类. */
+    class Entry {
+        /** HTTP响应体. */
+        public byte[] data;
+
+        /** HTTP响应首部中用于缓存新鲜度验证的ETag. */
+        public String etag;
+
+        /** HTTP响应时间. */
+        public long serverDate;
+
+        /** 缓存内容最后一次修改的时间. */
+        public long lastModified;
+
+        /** Request的缓存过期时间. */
+        public long ttl;
+
+        /** Request的缓存新鲜时间. */
+        public long softTtl;
+
+        /** HTTP响应Headers. */
+        public Map<String, String> responseHeaders = Collections.emptyMap();
+
+        /** 判断缓存内容是否过期. */
+        public boolean isExpired() {
+            return this.ttl < System.currentTimeMillis();
+        }
+
+        /** 判断缓存是否新鲜，不新鲜的缓存需要发到服务端做新鲜度的检测. */
+        public boolean refreshNeeded() {
+            return this.softTtl < System.currentTimeMillis();
+        }
+    }
+}
+```
+Cache接口定义规定了缓存实体的内容和其需要实现的方法。在RequestQueue中，Cache的实现类是DiskBasedCache类。
+
+## DiskBasedCache.java
 
 
