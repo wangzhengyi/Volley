@@ -24,14 +24,10 @@ import java.util.Map;
  * Created by wzy on 16-3-21.
  */
 public class DiskBasedCache implements Cache {
-    /**
-     * Default maximum disk usage in bytes.
-     */
+    /** 默认硬盘最大的缓存空间(5M). */
     private static final int DEFAULT_DISK_USAGE_BYTES = 5 * 1024 * 1024;
 
-    /**
-     * Magic number for current version of cache file format.
-     */
+    /** 标记缓存起始的MAGIC_NUMBER. */
     private static final int CACHE_MAGIC = 0x20150306;
 
     /**
@@ -45,19 +41,13 @@ public class DiskBasedCache implements Cache {
     private final Map<String, CacheHeader> mEntries =
             new LinkedHashMap<String, CacheHeader>(16, 0.75f, true);
 
-    /**
-     * Total amount of space currently used by the cache in bytes.
-     */
+    /** 目前使用的缓存字节数. */
     private long mTotalSize = 0;
 
-    /**
-     * The root directory to use for the cache.
-     */
+    /** 硬盘缓存目录. */
     private final File mRootDirectory;
 
-    /**
-     * The maximum size of the cache in bytes.
-     */
+    /** 硬盘缓存最大容量(默认5M). */
     private final int mMaxCacheSizeInBytes;
 
     public DiskBasedCache(File rootDirectory) {
@@ -67,6 +57,19 @@ public class DiskBasedCache implements Cache {
     public DiskBasedCache(File rootDirectory, int maxCacheSizeInBytes) {
         mRootDirectory = rootDirectory;
         mMaxCacheSizeInBytes = maxCacheSizeInBytes;
+    }
+
+    /** 清空缓存内容. */
+    @Override
+    public void clear() {
+        File[] files = mRootDirectory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                file.delete();
+            }
+        }
+        mEntries.clear();
+        mTotalSize = 0;
     }
 
     /**
@@ -254,36 +257,31 @@ public class DiskBasedCache implements Cache {
         }
     }
 
-    /**
-     * Clear the cache. Deletes all cached files from disk.
+    /** 抽象出来的缓存文件摘要信息。
+     * 与Cache.Entry类几乎相同,但是只存储了响应体的大小，没保存响应体的内容.
      */
-    @Override
-    public void clear() {
-        File[] files = mRootDirectory.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                file.delete();
-            }
-        }
-        mEntries.clear();
-        mTotalSize = 0;
-    }
-
     static class CacheHeader {
+        /** http响应体的大小. */
         public long size;
 
         public String key;
 
+        /** HTTP响应首部中用于缓存新鲜度验证的ETag. */
         public String etag;
 
+        /** HTTP响应时间. */
         public long serverDate;
 
+        /** 缓存内容最后一次修改的时间. */
         public long lastModified;
 
+        /** Request的http缓存过期时间. */
         public long ttl;
 
+        /** Request的http缓存新鲜时间. */
         public long softTtl;
 
+        /** HTTP的响应headers. */
         public Map<String, String> responseHeaders;
 
         private CacheHeader(){}
@@ -304,13 +302,10 @@ public class DiskBasedCache implements Cache {
             this.responseHeaders = entry.responseHeaders;
         }
 
-        /**
-         * Reads the header off an InputStream and returns a CacheHeader object.
-         * @param is The InputStream to read from
-         * @throws IOException
-         */
+        /** 从InputStream中构造CacheHeader对象.其实就是实现对象的反序列化. */
         public static CacheHeader readHeader(InputStream is) throws IOException {
             CacheHeader entry = new CacheHeader();
+            // 以CACHE_NUMBER作为读取一个对象的开始
             int magic = readInt(is);
             if (magic != CACHE_MAGIC) {
                 throw new IOException();
@@ -329,9 +324,7 @@ public class DiskBasedCache implements Cache {
             return entry;
         }
 
-        /**
-         * Creates a cache entry for the specified data.
-         */
+        /** 通过传入的data数组构造一个Cache.Entry对象. */
         public Entry toCacheEntry(byte[] data) {
             Entry e = new Entry();
             e.data = data;
@@ -344,9 +337,7 @@ public class DiskBasedCache implements Cache {
             return e;
         }
 
-        /**
-         * Writes the contents of this CacheHeader to the specified OutputStream.
-         */
+        /** 将CacheHeader对象序列化. */
         public boolean writeHeader(OutputStream os) {
             try {
                 writeInt(os, CACHE_MAGIC);
@@ -372,7 +363,11 @@ public class DiskBasedCache implements Cache {
         os.write(b, 0, b.length);
     }
 
-
+    /** InputStream中读取字符串的方法是:
+     *  1. 读取字符串长度n.
+     *  2. 读取n个字节保存在字符数组中.
+     *  3. 将字符数组转换成字符串.
+     */
     private static String readString(InputStream is) throws IOException {
         int n = (int)readLong(is);
         byte[] b = streamToBytes(is, n);
@@ -383,6 +378,9 @@ public class DiskBasedCache implements Cache {
         byte[] bytes = new byte[length];
         int count;
         int pos = 0;
+        // 这里调用的是InputStream的read(byte[] b, int off, int len)方法.作用是：
+        // 从输入流中最多读取len个数据字节到byte数组中,并将读取的第一个字节存储在byte[pos]位置上.
+        // 由于,每次读取的字节数count可能小于len,所以需要循环读取.
         while (pos < length && ((count = in.read(bytes, pos, length - pos)) != -1)) {
             pos += count;
         }
@@ -393,7 +391,7 @@ public class DiskBasedCache implements Cache {
     }
 
     static void writeLong(OutputStream os, long n) throws IOException {
-        os.write((byte)(n >>> 0));
+        os.write((byte)(n));
         os.write((byte)(n >>> 8));
         os.write((byte)(n >>> 16));
         os.write((byte)(n >>> 24));
@@ -405,7 +403,7 @@ public class DiskBasedCache implements Cache {
 
     private static long readLong(InputStream is) throws IOException {
         long n = 0;
-        n |= ((read(is) & 0xFFL) << 0);
+        n |= ((read(is) & 0xFFL));
         n |= ((read(is) & 0xFFL) << 8);
         n |= ((read(is) & 0xFFL) << 16);
         n |= ((read(is) & 0xFFL) << 24);
@@ -417,7 +415,7 @@ public class DiskBasedCache implements Cache {
     }
 
     private static void writeInt(OutputStream os, int n) throws IOException {
-        os.write((n >> 0) & 0xff);
+        os.write((n) & 0xff);
         os.write((n >> 8) & 0xff);
         os.write((n >> 16) & 0xff);
         os.write((n >> 24) & 0xff);
@@ -425,7 +423,7 @@ public class DiskBasedCache implements Cache {
 
     private static int readInt(InputStream is) throws IOException {
         int n = 0;
-        n |= (read(is) << 0);
+        n |= (read(is));
         n |= (read(is) << 8);
         n |= (read(is) << 16);
         n |= (read(is) << 24);
@@ -454,6 +452,11 @@ public class DiskBasedCache implements Cache {
     }
 
 
+    /**
+     * 从输入流中读取Map对象.读取方法如下:
+     * 1. 读取Map对象的数量size.
+     * 2. 然后循环读取size次,每次先读一个String作为key,再读一个String作为Value.
+     */
     private static Map<String, String> readStringStringMap(InputStream is) throws IOException {
         int size = readInt(is);
         Map<String, String> result = (size == 0) ? Collections.<String, String>emptyMap()
