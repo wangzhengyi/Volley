@@ -1868,4 +1868,111 @@ public class CacheDispatcher extends Thread{
 }
 ```
 
-从源码中可以看出,CacheDispatcher的执行流程和我们设想的基本一致,但是缺少:
+从源码中可以看出,CacheDispatcher的执行流程和我们设想的基本一致,但是当缓存内容不存在时,如何将网络拉取的最新内容存储在Cache缓存中却没有在CacheDispatcher类中体现.这是因为：
+NetworkDispatcher代码中,所有进行网络请求的request默认都会进行缓存存储,所以这里CacheDispatcher就不需要重复操作了.
+
+之前介绍RequestQueue的时候,我们只介绍了不进行缓存的Request请求是如何被调度的,那这里我们继续看一下,默认情况下,Request都是需要进行缓存的,那缓存是如何调度的呢?
+来看一下RequestQueue完整的add方法源码:
+```java
+    /** 将Request请求加入到调度队列中. */
+    public <T> Request<?> add(Request<T> request) {
+        // Tag the request as belonging to this queue and add it to the set of current requests.
+        request.setRequestQueue(this);
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.add(request);
+        }
+
+        // 分配request唯一的序列号.
+        request.setSequence(getSequenceNumber());
+
+        // request不允许缓存,则直接将request加入到mNetworkQueue当中
+        if (!request.shouldCache()) {
+            mNetworkQueue.add(request);
+            return request;
+        }
+
+        // Insert request into stage if there's already a request with the same cache key in flight.
+        synchronized (mWaitingRequests) {
+            String cacheKey = request.getCacheKey();
+            if (mWaitingRequests.containsKey(cacheKey)) {
+                // 表示RequestQueue正在调度过该Request,因为后续相同的Request先入队列,排队等待执行.
+                Queue<Request<?>> stageRequests = mWaitingRequests.get(cacheKey);
+                if (stageRequests == null) {
+                    stageRequests = new LinkedList<Request<?>>();
+                }
+                stageRequests.add(request);
+                mWaitingRequests.put(cacheKey, stageRequests);
+            } else {
+                // 将Request加入到等待Map中,表示Request正在执行.
+                mWaitingRequests.put(cacheKey, null);
+                mCacheQueue.add(request);
+            }
+            return request;
+        }
+    }
+```
+add方法之前也介绍过,这里要特殊强调一下mWaitingRequests的妙用.
+在应用的网络请求过程中,有时可能由于多线程或者后台Service更新等机制,导致同一个Url的Request被同一时间多次请求.这时,RequestQueue通过mWaitingRequests这个Map很好的控制了这种情况.
+通过mWaitingRequests,同一时间相同Url的Request只能有一个再执行.我想大家可能会有疑问(至少我看这部分代码时存在这个疑问):从代码逻辑中,可以看出,相同的Request被加入到Map该url对应的队列中,但是后续什么时候执行呢?add方法中并没有体现.
+那既然同一时间相同url的Request只能有一个在执行,那mWaitingRequests中url对应队列的Request当然是在上一个Request执行完毕后才会执行.Request执行完毕后会调用自身的finish方法.
+Request的finish调用时机肯定是ExecutorDelivery类将结果回调给用户接口时调用的,具体代码大家可以翻看之前的ExecutorDelivery类源码.
+Request的finish方法源码如下:
+```java
+    /** 用于告知请求队列当前request已经结束. */
+    void finish(final String tag) {
+        if (mRequestQueue != null) {
+            mRequestQueue.finish(this);
+        }
+    }
+```
+可以看到,Request的finish方法其实是通知RequestQueue,调用RequestQueue的finish方法来结束自己.继续跟踪RequestQueue的finish方法:
+```java
+    /** 该方法的调用时机为:参数Request将请求结果回调给用户接口时,会调用该方法告知此Request已经结束. */
+    <T> void finish(Request<T> request) {
+        // 从正在执行的Request队列中删除指定的request.
+        synchronized (mCurrentRequests) {
+            mCurrentRequests.remove(request);
+        }
+
+        // 观察者模式,通知Observer该request请求结束.
+        synchronized (mFinishedListeners) {
+            for (RequestFinishedListener<T> listener : mFinishedListeners) {
+                listener.onRequestFinished(request);
+            }
+        }
+
+        if (request.shouldCache()) {
+            synchronized (mWaitingRequests) {
+                // 因为当前Request已经正常结束,而且该request是可以缓存的,所以这时需要直接把正在等待的所有相同
+                // url的Request全部加入到缓存队列中,从缓存系统读取结果后回调用户接口.
+                String cacheKey = request.getCacheKey();
+                Queue<Request<?>> waitingRequests = mWaitingRequests.remove(cacheKey);
+                if (waitingRequests != null) {
+                    mCacheQueue.addAll(waitingRequests);
+                }
+            }
+        }
+    }
+```
+相信上面的注释足够让大家理解mWaitingRequests的妙用了.
+
+
+# Volley框架概览
+
+讲到这里,Volley的整体框架基本就算介绍完全了.相信坚持看到这里的同学,肯定对Volley框架也已经非常熟悉,这时候我们再来看一下Volley框架的整体架构,回顾一下之前所讲的知识:
+![Volley_FRAME](https://github.com/wangzhengyi/Volley/raw/master/picture/volley_frame.png)
+
+
+# 问答
+
+欢迎大家提出跟Volley架构相关的问题，我会挑选出某个问题进行具体解答.
+
+1. 为什么Volley适合频繁的网络请求，不适合文件上传等大数据请求呢？
+
+答：Volley为什么适合频繁的网络请求，是因为:
+  1. Volley有四个并发的线程,并有一个阻塞队列来对并发线程进行调度.
+  2. Volley有自己的Disk缓存系统,相同url的Request再没过期前可以直接从Disk缓存系统中获取结果.
+  3. Volley的RequestQueue类有一个mWaitingRequest的Map,用来存储相同url的request,key为url,value为request队列。保证同一时间相同url的request只有一个再执行,后续Request再第一个request结束后可直接从缓存系统中获取结果.
+  
+  为什么不适合文件上传,是因为文件上传这种操作都是唯一的，用不到缓存，而且4个线程的并发似乎也有点少.
+
