@@ -1122,11 +1122,11 @@ public interface ResponseDelivery {
 ```java
 ResponseDelivery delivery = new ExecutorDelivery(new Handler(Looper.getMainLooper()));
 ```
-可以看到，RequestQueue将绑定主线程Looper对象的Handler对象传递给了ExecutorDelivery，这样我们通过handler发送的消息其实都是在主线程进行处理了。
+可以看到,RequestQueue将绑定主线程Looper对象的Handler对象传递给了ExecutorDelivery,这样我们通过handler发送的消息其实都是在主线程进行处理了.
 ExecutorDelivery的中文注释源码如下:
 ```java
 /**
- * 网络请求结果传递类.(实现异步功能，主线程传递数据给子线程)
+ * 网络请求结果传递类.(实现异步功能,主线程传递数据给子线程)
  */
 @SuppressWarnings("unused")
 public class ExecutorDelivery implements ResponseDelivery {
@@ -1183,13 +1183,13 @@ public class ExecutorDelivery implements ResponseDelivery {
 
         @Override
         public void run() {
-            // 如果request被取消，则不回调用户设置的Listener接口
+            // 如果request被取消,则不回调用户设置的Listener接口
             if (mRequest.isCanceled()) {
                 mRequest.finish("canceled-at-delivery");
                 return;
             }
 
-            // 通过response状态标志，来判断是回调用户设置的Listener接口还是ErrorListener接口
+            // 通过response状态标志,来判断是回调用户设置的Listener接口还是ErrorListener接口
             if (mResponse.isSuccess()) {
                 mRequest.deliverResponse(mResponse.result);
             } else {
@@ -1213,14 +1213,14 @@ public class ExecutorDelivery implements ResponseDelivery {
 
 # 缓存机制
 
-前面讲解了并发和异步的实现，接下来，我们就来看一下Volley的缓存机制。再学习Volley缓存实现方案之前，我们先来感受一下Google I/O大会上Volley官方一张宣传图片：
+前面讲解了并发和异步的实现,接下来,我们就来看一下Volley的缓存机制.再学习Volley缓存实现方案之前,我们先来感受一下Google I/O大会上Volley官方一张宣传图片：
 ![Volley](https://github.com/wangzhengyi/Volley/raw/master/picture/volley.jpg)
 
-这张图片非常形象的表达了Volley适合频繁的网络请求。接下来，我们就从Volley的缓存系统入手，介绍一下为什么Volley适合频繁的网络请求.
+这张图片非常形象的表达了Volley适合频繁的网络请求.接下来,我们就从Volley的缓存系统入手,介绍一下为什么Volley适合频繁的网络请求.
 
 ## Cache.java
 
-既然要缓存Request请求，那我们首先就需要抽象出缓存对象。而Cache类就是对缓存对象的抽象描述:
+既然要缓存Request请求,那我们首先就需要抽象出缓存对象.而Cache类就是对缓存对象的抽象描述:
 ```java
 /** 缓存内存的抽象接口 */
 @SuppressWarnings("unused")
@@ -1269,15 +1269,603 @@ public interface Cache {
             return this.ttl < System.currentTimeMillis();
         }
 
-        /** 判断缓存是否新鲜，不新鲜的缓存需要发到服务端做新鲜度的检测. */
+        /** 判断缓存是否新鲜,不新鲜的缓存需要发到服务端做新鲜度的检测. */
         public boolean refreshNeeded() {
             return this.softTtl < System.currentTimeMillis();
         }
     }
 }
 ```
-Cache接口定义规定了缓存实体的内容和其需要实现的方法。在RequestQueue中，Cache的实现类是DiskBasedCache类。
+Cache接口定义规定了缓存实体的内容和其需要实现的方法.在RequestQueue中,Cache的实现类是DiskBasedCache类.
 
 ## DiskBasedCache.java
 
+DiskBasedCache类的主要作用是：实现了基于Disk的对象存储类,并提供替换策略.代码比较简单,中文注释的代码如下:
+```java
+/** 基于Disk的缓存实现类. */
+@SuppressWarnings("ResultOfMethodCallIgnored")
+public class DiskBasedCache implements Cache {
+    /** 默认硬盘最大的缓存空间(5M). */
+    private static final int DEFAULT_DISK_USAGE_BYTES = 5 * 1024 * 1024;
 
+    /** 标记缓存起始的MAGIC_NUMBER. */
+    private static final int CACHE_MAGIC = 0x20150306;
+
+    /**
+     * High water mark percentage for the cache.
+     */
+    private static final float HYSTERESIS_FACTOR = 0.9f;
+
+    /**
+     * Map of the Key, CacheHeaders pairs.
+     */
+    private final Map<String, CacheHeader> mEntries =
+            new LinkedHashMap<String, CacheHeader>(16, 0.75f, true);
+
+    /** 目前使用的缓存字节数. */
+    private long mTotalSize = 0;
+
+    /** 硬盘缓存目录. */
+    private final File mRootDirectory;
+
+    /** 硬盘缓存最大容量(默认5M). */
+    private final int mMaxCacheSizeInBytes;
+
+    public DiskBasedCache(File rootDirectory) {
+        this(rootDirectory, DEFAULT_DISK_USAGE_BYTES);
+    }
+
+    public DiskBasedCache(File rootDirectory, int maxCacheSizeInBytes) {
+        mRootDirectory = rootDirectory;
+        mMaxCacheSizeInBytes = maxCacheSizeInBytes;
+    }
+
+    /** 清空缓存内容. */
+    @Override
+    public synchronized void clear() {
+        File[] files = mRootDirectory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                file.delete();
+            }
+        }
+        mEntries.clear();
+        mTotalSize = 0;
+    }
+
+    /** 从Disk中根据key获取并构造HTTP响应体Cache.Entry. */
+    @Override
+    public synchronized Entry get(String key) {
+        CacheHeader entry = mEntries.get(key);
+        if (entry == null) {
+            return null;
+        }
+
+        File file = getFileForKey(key);
+        CountingInputStream cis = null;
+        try {
+            cis = new CountingInputStream(new BufferedInputStream(new FileInputStream(file)));
+            // 读完CacheHeader部分,并通过CountingInputStream的bytesRead成员记录已经读取的字节数.
+            CacheHeader.readHeader(cis);
+            // 读取缓存文件存储的HTTP响应体内容.
+            byte[] data = streamToBytes(cis, (int)(file.length() - cis.bytesRead));
+            return entry.toCacheEntry(data);
+        } catch (IOException e) {
+            remove(key);
+            return null;
+        } finally {
+            if (cis != null) {
+                try {
+                    cis.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    /** 初始化Disk缓存系统.
+     * 作用是：遍历Disk缓存系统,将缓存文件中的CacheHeader和key存储到Map对象中. */
+    @Override
+    public void initialize() {
+        if (!mRootDirectory.exists() && !mRootDirectory.mkdirs()) {
+            return;
+        }
+
+        File[] files = mRootDirectory.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            BufferedInputStream fis = null;
+            try {
+                fis = new BufferedInputStream(new FileInputStream(file));
+                CacheHeader entry = CacheHeader.readHeader(fis);
+                entry.size = file.length();
+                putEntry(entry.key, entry);
+            }catch (IOException e) {
+                file.delete();
+                e.printStackTrace();
+            }finally {
+                if (fis != null) {
+                    try {
+                        fis.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    /** 标记指定的cache过期. */
+    @Override
+    public synchronized void invalidate(String key, boolean fullExpire) {
+        Entry entry = get(key);
+        if (entry != null) {
+            entry.softTtl = 0;
+            if (fullExpire) {
+                entry.ttl = 0;
+            }
+            put(key, entry);
+        }
+    }
+
+    /** 将Cache.Entry存入到指定的缓存文件中. 并在Map中记录<key,CacheHeader>. */
+    @Override
+    public synchronized void put(String key, Entry entry) {
+        pruneIfNeeded(entry.data.length);
+        File file = getFileForKey(key);
+        try {
+            BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(file));
+            CacheHeader e = new CacheHeader(key, entry);
+            boolean success = e.writeHeader(fos);
+            if (!success) {
+                fos.close();
+                throw new IOException();
+            }
+            fos.write(entry.data);
+            fos.close();
+            putEntry(key, e);
+            return;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        file.delete();
+    }
+
+    /** Disk缓存替换更新机制. */
+    private void pruneIfNeeded(int neededSpace) {
+        if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes) {
+            return;
+        }
+
+        Iterator<Map.Entry<String, CacheHeader>> iterator = mEntries.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, CacheHeader> entry = iterator.next();
+            CacheHeader e = entry.getValue();
+            boolean deleted = getFileForKey(e.key).delete();
+            if (deleted) {
+                mTotalSize -= e.size;
+            }
+            iterator.remove();
+
+            if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes * HYSTERESIS_FACTOR) {
+                break;
+            }
+        }
+    }
+
+    /** 获取存储当前key对应value的文件句柄. */
+    private File getFileForKey(String key) {
+        return new File(mRootDirectory, getFilenameForKey(key));
+    }
+
+    /** 根据key的hash值生成对应的存储文件名称. */
+    private String getFilenameForKey(String key) {
+        int firstHalfLength = key.length() / 2;
+        String localFilename = String.valueOf(key.substring(0, firstHalfLength).hashCode());
+        localFilename += String.valueOf(key.substring(firstHalfLength).hashCode());
+        return localFilename;
+    }
+
+    /** 将key和CacheHeader存入到Map对象中.并更新当前占用的总字节数. */
+    private void putEntry(String key, CacheHeader entry) {
+        if (!mEntries.containsKey(key)) {
+            mTotalSize += entry.size;
+        } else {
+            CacheHeader oldEntry = mEntries.get(key);
+            mTotalSize += (entry.size - oldEntry.size);
+        }
+
+        mEntries.put(key, entry);
+    }
+
+    @Override
+    public synchronized void remove(String key) {
+        boolean deleted = getFileForKey(key).delete();
+        removeEntry(key);
+        if (!deleted) {
+            Log.e("Volley", "没能删除key=" + key + ", 文件名=" + getFilenameForKey(key) + "缓存.");
+        }
+    }
+
+    /** 从Map对象中删除key对应的键值对. */
+    private void removeEntry(String key) {
+        CacheHeader entry = mEntries.get(key);
+        if (entry != null) {
+            mTotalSize -= entry.size;
+            mEntries.remove(key);
+        }
+    }
+
+    /** 抽象出来的缓存文件摘要信息.
+     * 与Cache.Entry类几乎相同,但是只存储了响应体的大小,没保存响应体的内容.
+     */
+    static class CacheHeader {
+        /** HTTP响应头(header)和响应体(body)的整体大小.也就是Disk缓存系统中对应缓存文件的大小. */
+        public long size;
+
+        public String key;
+
+        /** HTTP响应首部中用于缓存新鲜度验证的ETag. */
+        public String etag;
+
+        /** HTTP响应时间. */
+        public long serverDate;
+
+        /** 缓存内容最后一次修改的时间. */
+        public long lastModified;
+
+        /** Request的http缓存过期时间. */
+        public long ttl;
+
+        /** Request的http缓存新鲜时间. */
+        public long softTtl;
+
+        /** HTTP的响应headers. */
+        public Map<String, String> responseHeaders;
+
+        private CacheHeader(){}
+
+        /**
+         * Instantiates a new CacheHeader object
+         * @param key The key that indentifies the cache entry
+         * @param entry The cache entry
+         */
+        public CacheHeader(String key, Entry entry) {
+            this.key = key;
+            this.size = entry.data.length;
+            this.etag = entry.etag;
+            this.serverDate = entry.serverDate;
+            this.lastModified = entry.lastModified;
+            this.ttl = entry.ttl;
+            this.softTtl = entry.softTtl;
+            this.responseHeaders = entry.responseHeaders;
+        }
+
+        /** 从InputStream中构造CacheHeader对象.其实就是实现对象的反序列化. */
+        public static CacheHeader readHeader(InputStream is) throws IOException {
+            CacheHeader entry = new CacheHeader();
+            // 以CACHE_NUMBER作为读取一个对象的开始
+            int magic = readInt(is);
+            if (magic != CACHE_MAGIC) {
+                throw new IOException();
+            }
+            entry.key = readString(is);
+            entry.etag = readString(is);
+            if (entry.etag.equals("")) {
+                entry.etag = null;
+            }
+            entry.serverDate = readLong(is);
+            entry.lastModified = readLong(is);
+            entry.ttl = readLong(is);
+            entry.softTtl = readLong(is);
+            entry.responseHeaders = readStringStringMap(is);
+
+            return entry;
+        }
+
+        /** 通过传入的data数组构造一个Cache.Entry对象. */
+        public Entry toCacheEntry(byte[] data) {
+            Entry e = new Entry();
+            e.data = data;
+            e.etag = etag;
+            e.serverDate = serverDate;
+            e.lastModified = lastModified;
+            e.ttl = ttl;
+            e.softTtl = softTtl;
+            e.responseHeaders = responseHeaders;
+            return e;
+        }
+
+        /** 将CacheHeader对象序列化. */
+        public boolean writeHeader(OutputStream os) {
+            try {
+                writeInt(os, CACHE_MAGIC);
+                writeString(os, key);
+                writeString(os, etag == null ? "" : etag);
+                writeLong(os, serverDate);
+                writeLong(os, lastModified);
+                writeLong(os, ttl);
+                writeLong(os, softTtl);
+                writeStringStringMap(responseHeaders, os);
+                os.flush();
+                return true;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return false;
+            }
+        }
+    }
+
+    static void writeString(OutputStream os, String s) throws IOException {
+        byte[] b = s.getBytes("UTF-8");
+        writeLong(os, b.length);
+        os.write(b, 0, b.length);
+    }
+
+    /** InputStream中读取字符串的方法是:
+     *  1. 读取字符串长度n.
+     *  2. 读取n个字节保存在字符数组中.
+     *  3. 将字符数组转换成字符串.
+     */
+    private static String readString(InputStream is) throws IOException {
+        int n = (int)readLong(is);
+        byte[] b = streamToBytes(is, n);
+        return new String(b, "UTF-8");
+    }
+
+    private static byte[] streamToBytes(InputStream in, int length) throws IOException {
+        byte[] bytes = new byte[length];
+        int count;
+        int pos = 0;
+        // 这里调用的是InputStream的read(byte[] b, int off, int len)方法.作用是：
+        // 从输入流中最多读取len个数据字节到byte数组中,并将读取的第一个字节存储在byte[pos]位置上.
+        // 由于,每次读取的字节数count可能小于len,所以需要循环读取.
+        while (pos < length && ((count = in.read(bytes, pos, length - pos)) != -1)) {
+            pos += count;
+        }
+        if (pos != length) {
+            throw new IOException("Expected " + length + " bytes, read " + pos + " bytes");
+        }
+        return bytes;
+    }
+
+    static void writeLong(OutputStream os, long n) throws IOException {
+        os.write((byte)(n));
+        os.write((byte)(n >>> 8));
+        os.write((byte)(n >>> 16));
+        os.write((byte)(n >>> 24));
+        os.write((byte)(n >>> 32));
+        os.write((byte)(n >>> 40));
+        os.write((byte)(n >>> 48));
+        os.write((byte)(n >>> 56));
+    }
+
+    private static long readLong(InputStream is) throws IOException {
+        long n = 0;
+        n |= ((read(is) & 0xFFL));
+        n |= ((read(is) & 0xFFL) << 8);
+        n |= ((read(is) & 0xFFL) << 16);
+        n |= ((read(is) & 0xFFL) << 24);
+        n |= ((read(is) & 0xFFL) << 32);
+        n |= ((read(is) & 0xFFL) << 40);
+        n |= ((read(is) & 0xFFL) << 48);
+        n |= ((read(is) & 0xFFL) << 56);
+        return n;
+    }
+
+    private static void writeInt(OutputStream os, int n) throws IOException {
+        os.write((n) & 0xff);
+        os.write((n >> 8) & 0xff);
+        os.write((n >> 16) & 0xff);
+        os.write((n >> 24) & 0xff);
+    }
+
+    private static int readInt(InputStream is) throws IOException {
+        int n = 0;
+        n |= (read(is));
+        n |= (read(is) << 8);
+        n |= (read(is) << 16);
+        n |= (read(is) << 24);
+
+        return n;
+    }
+
+    private static int read(InputStream is) throws IOException {
+        int b = is.read();
+        if (b == -1) {
+            throw new EOFException();
+        }
+        return b;
+    }
+
+    static void writeStringStringMap(Map<String, String> map, OutputStream os) throws IOException {
+        if (map != null) {
+            writeInt(os, map.size());
+            for (Map.Entry<String, String> entry : map.entrySet()) {
+                writeString(os, entry.getKey());
+                writeString(os, entry.getValue());
+            }
+        } else {
+            writeInt(os, 0);
+        }
+    }
+
+
+    /**
+     * 从输入流中读取Map对象.读取方法如下:
+     * 1. 读取Map对象的数量size.
+     * 2. 然后循环读取size次,每次先读一个String作为key,再读一个String作为Value.
+     */
+    private static Map<String, String> readStringStringMap(InputStream is) throws IOException {
+        int size = readInt(is);
+        Map<String, String> result = (size == 0) ? Collections.<String, String>emptyMap()
+                : new HashMap<String, String>(size);
+        for (int i = 0; i < size; i ++) {
+            String key = readString(is).intern();
+            String value = readString(is).intern();
+            result.put(key, value);
+        }
+
+        return result;
+    }
+
+    /** 继承FilterInputStream,增加记录读取总字节数的功能. */
+    private static class CountingInputStream extends FilterInputStream{
+        private int bytesRead = 0;
+
+        private CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int result = super.read();
+            if (result != -1) {
+                bytesRead ++;
+            }
+            return result;
+        }
+
+        @Override
+        public int read(@NonNull byte[] buffer, int byteOffset, int byteCount) throws IOException {
+            int result = super.read(buffer, byteOffset, byteCount);
+            if (result != -1) {
+                bytesRead += result;
+            }
+            return result;
+        }
+    }
+}
+```
+
+有了DiskBasedCache类,我们就可以看一下Volley是如何对缓存进行存储的了.
+回到RequestQueue类中,我们看一下跟缓存相关的代码实现.
+
+## CacheDispatcher.java
+
+在RequestQueue的start方法里,有如下代码:
+```java
+    public void start() {
+        // 关闭所有正在运行的缓存线程和网络请求线程.
+        stop();
+        // 开启缓存线程.
+        mCacheDispatcher = new CacheDispatcher(mCacheQueue, mNetworkQueue, mCache, mDelivery);
+        mCacheDispatcher.start();
+    }
+```
+从上面代码,可以看到,Volley是启动了一个线程来实现缓存功能.我们再学习CacheDispatcherd的实现之前,可以来思考一下,如果让我们来实现CacheDispatcher,我们的思路是什么呢?
+我的思路如下：
+
+1. 在当前DiskBasedCache缓存系统中,查找是否已经缓存过该Request.
+2. 如果已经缓存过,且没有过期,则直接返回缓存系统中的内容.
+3. 如果没有缓存,或者缓存已经过期,则走网络请求,并且网络请求之后的结果记录到DiskBasedCache缓存系统中.
+
+接下来,我们来看一下CacheDispatcher的源码,看看它是不是这么操作的：
+```java
+/** 线程,用来调度可以走缓存的Request请求. */
+public class CacheDispatcher extends Thread{
+    /** 可以走Disk缓存的request请求队列. */
+    private final BlockingQueue<Request<?>> mCacheQueue;
+
+    /** 需要走网络的request请求队列. */
+    private final BlockingQueue<Request<?>> mNetworkQueue;
+
+    /** DiskBasedCache缓存实现类. */
+    private final Cache mCache;
+
+    /** 网络请求结果传递类. */
+    private final ResponseDelivery mDelivery;
+
+    /** 用来停止线程的标志位. */
+    private volatile boolean mQuit = false;
+
+    public CacheDispatcher(
+            BlockingQueue<Request<?>> cacheQueue, BlockingQueue<Request<?>> networkQueue,
+            Cache cache, ResponseDelivery delivery) {
+        mCacheQueue = cacheQueue;
+        mNetworkQueue = networkQueue;
+        mCache = cache;
+        mDelivery = delivery;
+    }
+
+    /** 通过标记位机制强行停止CacheDispatcher线程. */
+    public void quit() {
+        mQuit = true;
+        interrupt();
+    }
+
+    @Override
+    public void run() {
+        android.os.Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+
+        // 初始化DiskBasedCache缓存类.
+        mCache.initialize();
+
+        while (true) {
+            try {
+                // 从缓存队列中获取request请求.(缓存队列实现了生产者-消费者队列模型)
+                final Request<?> request = mCacheQueue.take();
+
+                // 判断请求是否被取消
+                if (request.isCanceled()) {
+                    request.finish("cache-discard-canceled");
+                    continue;
+                }
+
+                // 从缓存系统中获取request请求结果Cache.Entry.
+                Cache.Entry entry = mCache.get(request.getCacheKey());
+                if (entry == null) {
+                    // 如果缓存系统中没有该缓存请求,则将request加入到网络请求队列中.
+                    // 由于NetworkQueue跟NetworkDispatcher线程关联,并且也是生产者-消费者队列,
+                    // 所以这里添加request请求就相当于将request执行网络请求.
+                    mNetworkQueue.put(request);
+                    continue;
+                }
+
+                // 判断缓存结果是否过期.
+                if (entry.isExpired()) {
+                    request.setCacheEntry(entry);
+                    // 过期的缓存需要重新执行request请求.
+                    mNetworkQueue.put(request);
+                    continue;
+                }
+
+                // We have a cache hit; parse its data for delivery back to the request.
+                Response<?> response = request.parseNetworkResponse(new NetworkResponse(entry.data,
+                        entry.responseHeaders));
+
+                // 判断Request请求结果是否新鲜?
+                if (!entry.refreshNeeded()) {
+                    // 请求结果新鲜,则直接将请求结果分发,进行异步回调用户接口.
+                    mDelivery.postResponse(request, response);
+                } else {
+                    // 请求结果不新鲜,但是同样还是将缓存结果返回给用户,并且同时执行网络请求,刷新Request网络结果缓存.
+                    request.setCacheEntry(entry);
+
+                    response.intermediate = true;
+
+                    mDelivery.postResponse(request, response, new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                mNetworkQueue.put(request);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    });
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                if (mQuit) {
+                    return;
+                }
+            }
+        }
+    }
+}
+```
+
+从源码中可以看出,CacheDispatcher的执行流程和我们设想的基本一致,但是缺少:

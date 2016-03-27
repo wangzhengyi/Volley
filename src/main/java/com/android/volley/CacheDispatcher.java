@@ -4,42 +4,23 @@ import android.os.Process;
 
 import java.util.concurrent.BlockingQueue;
 
-/**
- * Provides a thread for performing cache triage on a queue of requests.
- */
+/** 线程,用来调度可以走缓存的Request请求. */
 public class CacheDispatcher extends Thread{
-    /**
-     * The queue of requests coming in for triage.
-     */
+    /** 可以走Disk缓存的request请求队列. */
     private final BlockingQueue<Request<?>> mCacheQueue;
 
-    /**
-     * The queue of requests going out to the network.
-     */
+    /** 需要走网络的request请求队列. */
     private final BlockingQueue<Request<?>> mNetworkQueue;
 
-    /**
-     * The cache to read from.
-     */
+    /** DiskBasedCache缓存实现类. */
     private final Cache mCache;
 
-    /**
-     * For posting responses.
-     */
+    /** 网络请求结果传递类. */
     private final ResponseDelivery mDelivery;
 
-    /**
-     * Used for telling us to die.
-     */
+    /** 用来停止线程的标志位. */
     private volatile boolean mQuit = false;
 
-    /**
-     * Creates a new cache triage dispatcher thread.
-     * @param cacheQueue Queue of incoming requests for triage
-     * @param networkQueue Queue to post requests that require network to
-     * @param cache Cache interface to use for resolution
-     * @param delivery Delivery interface to use for posting responses
-     */
     public CacheDispatcher(
             BlockingQueue<Request<?>> cacheQueue, BlockingQueue<Request<?>> networkQueue,
             Cache cache, ResponseDelivery delivery) {
@@ -49,9 +30,7 @@ public class CacheDispatcher extends Thread{
         mDelivery = delivery;
     }
 
-    /**
-     * Forces this dispatcher to quit immediately.
-     */
+    /** 通过标记位机制强行停止CacheDispatcher线程. */
     public void quit() {
         mQuit = true;
         interrupt();
@@ -61,51 +40,48 @@ public class CacheDispatcher extends Thread{
     public void run() {
         android.os.Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
+        // 初始化DiskBasedCache缓存类.
         mCache.initialize();
 
         while (true) {
             try {
-                // Get a request from the cache triage queue, blocking until
-                // at least one is available.
+                // 从缓存队列中获取request请求.(缓存队列实现了生产者-消费者队列模型)
                 final Request<?> request = mCacheQueue.take();
-                request.addMarker("cache-queue-take");
 
-                // If the request has been canceled, don't bother dispatching it.
+                // 判断请求是否被取消
                 if (request.isCanceled()) {
                     request.finish("cache-discard-canceled");
                     continue;
                 }
 
-                // Attempt to retrieve this item from cache.
+                // 从缓存系统中获取request请求结果Cache.Entry.
                 Cache.Entry entry = mCache.get(request.getCacheKey());
                 if (entry == null) {
-                    request.addMarker("cache-miss");
+                    // 如果缓存系统中没有该缓存请求,则将request加入到网络请求队列中.
+                    // 由于NetworkQueue跟NetworkDispatcher线程关联,并且也是生产者-消费者队列,
+                    // 所以这里添加request请求就相当于将request执行网络请求.
                     mNetworkQueue.put(request);
                     continue;
                 }
 
-                // If it is completely expired, just send it to the network
+                // 判断缓存结果是否过期.
                 if (entry.isExpired()) {
-                    request.addMarker("cache-hit-expired");
                     request.setCacheEntry(entry);
+                    // 过期的缓存需要重新执行request请求.
                     mNetworkQueue.put(request);
                     continue;
                 }
 
                 // We have a cache hit; parse its data for delivery back to the request.
-                request.addMarker("cache-hit");
                 Response<?> response = request.parseNetworkResponse(new NetworkResponse(entry.data,
                         entry.responseHeaders));
-                request.addMarker("cache-hit-parsed");
 
+                // 判断Request请求结果是否新鲜?
                 if (!entry.refreshNeeded()) {
-                    // Completely unexpired cache hit. Just deliver the response.
+                    // 请求结果新鲜,则直接将请求结果分发,进行异步回调用户接口.
                     mDelivery.postResponse(request, response);
                 } else {
-                    // Soft-expired cache hit. We can deliver the cached response,
-                    // but we need to alse send the request to the network for
-                    // refreshing.
-                    request.addMarker("cache-hit-refresh-needed");
+                    // 请求结果不新鲜,但是同样还是将缓存结果返回给用户,并且同时执行网络请求,刷新Request网络结果缓存.
                     request.setCacheEntry(entry);
 
                     response.intermediate = true;
@@ -126,7 +102,6 @@ public class CacheDispatcher extends Thread{
                 if (mQuit) {
                     return;
                 }
-                continue;
             }
         }
     }

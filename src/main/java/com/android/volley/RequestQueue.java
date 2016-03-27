@@ -49,9 +49,7 @@ public class RequestQueue {
     /** RequestQueue默认开启的网络线程的数量. */
     private static final int DEFAULT_NETWORK_THREAD_POOL_SIZE = 4;
 
-    /**
-     * Cache interface for retrieving and storing responses.
-     */
+    /** Disk缓存实现类. */
     private final Cache mCache;
 
     /** 封装request网络请求的Network类. */
@@ -97,7 +95,7 @@ public class RequestQueue {
     public void start() {
         // 关闭所有正在运行的缓存线程和网络请求线程.
         stop();
-        // Create the cache dispatcher and start it
+        // 开启缓存线程.
         mCacheDispatcher = new CacheDispatcher(mCacheQueue, mNetworkQueue, mCache, mDelivery);
         mCacheDispatcher.start();
 
