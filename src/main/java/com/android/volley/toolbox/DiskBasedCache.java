@@ -1,6 +1,7 @@
 package com.android.volley.toolbox;
 
-import android.os.SystemClock;
+import android.support.annotation.NonNull;
+import android.util.Log;
 
 import com.android.volley.Cache;
 
@@ -20,9 +21,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Created by wzy on 16-3-21.
- */
+/** 基于Disk的缓存实现类. */
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public class DiskBasedCache implements Cache {
     /** 默认硬盘最大的缓存空间(5M). */
     private static final int DEFAULT_DISK_USAGE_BYTES = 5 * 1024 * 1024;
@@ -61,7 +61,7 @@ public class DiskBasedCache implements Cache {
 
     /** 清空缓存内容. */
     @Override
-    public void clear() {
+    public synchronized void clear() {
         File[] files = mRootDirectory.listFiles();
         if (files != null) {
             for (File file : files) {
@@ -72,11 +72,9 @@ public class DiskBasedCache implements Cache {
         mTotalSize = 0;
     }
 
-    /**
-     * Returns the cache entry with the specified key if it exists, null otherwise.
-     */
+    /** 从Disk中根据key获取并构造HTTP响应体Cache.Entry. */
     @Override
-    public Entry get(String key) {
+    public synchronized Entry get(String key) {
         CacheHeader entry = mEntries.get(key);
         if (entry == null) {
             return null;
@@ -86,27 +84,72 @@ public class DiskBasedCache implements Cache {
         CountingInputStream cis = null;
         try {
             cis = new CountingInputStream(new BufferedInputStream(new FileInputStream(file)));
+            // 读完CacheHeader部分,并通过CountingInputStream的bytesRead成员记录已经读取的字节数.
             CacheHeader.readHeader(cis);
+            // 读取缓存文件存储的HTTP响应体内容.
             byte[] data = streamToBytes(cis, (int)(file.length() - cis.bytesRead));
             return entry.toCacheEntry(data);
         } catch (IOException e) {
-            e.printStackTrace();
             remove(key);
             return null;
         } finally {
             if (cis != null) {
                 try {
                     cis.close();
-                } catch (IOException e) {
-                    return null;
+                } catch (IOException ignored) {
                 }
             }
         }
     }
 
-    /**
-     * Puts the entry with the specified into the cache.
-     */
+    /** 初始化Disk缓存系统.
+     * 作用是：遍历Disk缓存系统,将缓存文件中的CacheHeader和key存储到Map对象中. */
+    @Override
+    public void initialize() {
+        if (!mRootDirectory.exists() && !mRootDirectory.mkdirs()) {
+            return;
+        }
+
+        File[] files = mRootDirectory.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            BufferedInputStream fis = null;
+            try {
+                fis = new BufferedInputStream(new FileInputStream(file));
+                CacheHeader entry = CacheHeader.readHeader(fis);
+                entry.size = file.length();
+                putEntry(entry.key, entry);
+            }catch (IOException e) {
+                file.delete();
+                e.printStackTrace();
+            }finally {
+                if (fis != null) {
+                    try {
+                        fis.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    /** 标记指定的cache过期. */
+    @Override
+    public synchronized void invalidate(String key, boolean fullExpire) {
+        Entry entry = get(key);
+        if (entry != null) {
+            entry.softTtl = 0;
+            if (fullExpire) {
+                entry.ttl = 0;
+            }
+            put(key, entry);
+        }
+    }
+
+    /** 将Cache.Entry存入到指定的缓存文件中. 并在Map中记录<key,CacheHeader>. */
     @Override
     public synchronized void put(String key, Entry entry) {
         pruneIfNeeded(entry.data.length);
@@ -129,14 +172,11 @@ public class DiskBasedCache implements Cache {
         file.delete();
     }
 
+    /** Disk缓存替换更新机制. */
     private void pruneIfNeeded(int neededSpace) {
         if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes) {
             return;
         }
-
-        long before = mTotalSize;
-        int prunedFiles = 0;
-        long startTime = SystemClock.elapsedRealtime();
 
         Iterator<Map.Entry<String, CacheHeader>> iterator = mEntries.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -147,7 +187,6 @@ public class DiskBasedCache implements Cache {
                 mTotalSize -= e.size;
             }
             iterator.remove();
-            prunedFiles ++;
 
             if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes * HYSTERESIS_FACTOR) {
                 break;
@@ -155,18 +194,12 @@ public class DiskBasedCache implements Cache {
         }
     }
 
-    /**
-     * Returns a file object for the given cache key.
-     */
+    /** 获取存储当前key对应value的文件句柄. */
     private File getFileForKey(String key) {
         return new File(mRootDirectory, getFilenameForKey(key));
     }
 
-    /**
-     * Creates a pseudo-unique filename for the specified cache key.
-     * @param key The key to generate a file name for.
-     * @return A pseudo-unique filename.
-     */
+    /** 根据key的hash值生成对应的存储文件名称. */
     private String getFilenameForKey(String key) {
         int firstHalfLength = key.length() / 2;
         String localFilename = String.valueOf(key.substring(0, firstHalfLength).hashCode());
@@ -174,44 +207,7 @@ public class DiskBasedCache implements Cache {
         return localFilename;
     }
 
-    @Override
-    public void initialize() {
-        if (!mRootDirectory.exists()) {
-            if (!mRootDirectory.mkdirs()) {
-
-            }
-            return;
-        }
-
-        File[] files = mRootDirectory.listFiles();
-        if (files == null) {
-            return;
-        }
-
-        for (File file : files) {
-            BufferedInputStream fis = null;
-            try {
-                fis = new BufferedInputStream(new FileInputStream(file));
-                CacheHeader entry = CacheHeader.readHeader(fis);
-                entry.size = file.length();
-                putEntry(entry.key, entry);
-            }catch (IOException e) {
-                if (file != null) {
-                    file.delete();
-                }
-                e.printStackTrace();
-            }finally {
-                if (fis != null) {
-                    try {
-                        fis.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-    }
-
+    /** 将key和CacheHeader存入到Map对象中.并更新当前占用的总字节数. */
     private void putEntry(String key, CacheHeader entry) {
         if (!mEntries.containsKey(key)) {
             mTotalSize += entry.size;
@@ -223,32 +219,16 @@ public class DiskBasedCache implements Cache {
         mEntries.put(key, entry);
     }
 
-    /**
-     * Invalidates an entry in the cache.
-     * @param key Cache key
-     * @param fullExpire True to fully expire the entry, false to soft expire
-     */
     @Override
-    public void invalidate(String key, boolean fullExpire) {
-        Entry entry = get(key);
-        if (entry != null) {
-            entry.softTtl = 0;
-            if (fullExpire) {
-                entry.ttl = 0;
-            }
-            put(key, entry);
+    public synchronized void remove(String key) {
+        boolean deleted = getFileForKey(key).delete();
+        removeEntry(key);
+        if (!deleted) {
+            Log.e("Volley", "没能删除key=" + key + ", 文件名=" + getFilenameForKey(key) + "缓存.");
         }
     }
 
-    @Override
-    public void remove(String key) {
-        boolean deleted = getFileForKey(key).delete();
-        removeEntry(key);
-    }
-
-    /**
-     * Removes the entry identified by 'key' from the cache.
-     */
+    /** 从Map对象中删除key对应的键值对. */
     private void removeEntry(String key) {
         CacheHeader entry = mEntries.get(key);
         if (entry != null) {
@@ -261,7 +241,7 @@ public class DiskBasedCache implements Cache {
      * 与Cache.Entry类几乎相同,但是只存储了响应体的大小，没保存响应体的内容.
      */
     static class CacheHeader {
-        /** http响应体的大小. */
+        /** HTTP响应头(header)和响应体(body)的整体大小.也就是Disk缓存系统中对应缓存文件的大小. */
         public long size;
 
         public String key;
@@ -470,7 +450,7 @@ public class DiskBasedCache implements Cache {
         return result;
     }
 
-
+    /** 继承FilterInputStream,增加记录读取总字节数的功能. */
     private static class CountingInputStream extends FilterInputStream{
         private int bytesRead = 0;
 
@@ -488,7 +468,7 @@ public class DiskBasedCache implements Cache {
         }
 
         @Override
-        public int read(byte[] buffer, int byteOffset, int byteCount) throws IOException {
+        public int read(@NonNull byte[] buffer, int byteOffset, int byteCount) throws IOException {
             int result = super.read(buffer, byteOffset, byteCount);
             if (result != -1) {
                 bytesRead += result;
