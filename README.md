@@ -1969,10 +1969,9 @@ Request的finish方法源码如下:
 
 1. 为什么Volley适合频繁的网络请求，不适合文件上传等大数据请求呢？
 
-答：Volley为什么适合频繁的网络请求，是因为:
+> 答：Volley为什么适合频繁的网络请求，是因为:
   1. Volley有四个并发的线程,并有一个阻塞队列来对并发线程进行调度.
   2. Volley有自己的Disk缓存系统,相同url的Request再没过期前可以直接从Disk缓存系统中获取结果.
   3. Volley的RequestQueue类有一个mWaitingRequest的Map,用来存储相同url的request,key为url,value为request队列。保证同一时间相同url的request只有一个再执行,后续Request再第一个request结束后可直接从缓存系统中获取结果.
-  
   为什么不适合文件上传,是因为文件上传这种操作都是唯一的，用不到缓存，而且4个线程的并发似乎也有点少.
 
