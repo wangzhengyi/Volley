@@ -1957,6 +1957,182 @@ Request的finish方法源码如下:
 相信上面的注释足够让大家理解mWaitingRequests的妙用了.
 
 
+# Volley获取网络图片
+本来想分析Universal Image Loader的源码,但是发现Volley已经实现了网络图片的加载功能.其实,网络图片的加载也是分几个步骤:
+1. 获取网络图片的url.
+2. 判断该url对应的图片是否有本地缓存.
+3. 有本地缓存,直接使用本地缓存图片,通过异步回调给ImageView进行设置.
+4. 无本地缓存,就先从网络拉取,保存在本地后,再通过异步回调给ImageView进行设置.
+
+我们通过Volley源码,看一下Volley是否是按照这个步骤实现网络图片加载的.
+
+## ImageRequest.java
+
+按照Volley的架构,我们首先需要构造一个网络图片请求,Volley帮我们封装了ImageRequest类,我们来看一下它的具体实现:
+```java
+/** 网络图片请求类. */
+@SuppressWarnings("unused")
+public class ImageRequest extends Request<Bitmap> {
+    /** 默认图片获取的超时时间(单位:毫秒) */
+    public static final int DEFAULT_IMAGE_REQUEST_MS = 1000;
+
+    /** 默认图片获取的重试次数. */
+    public static final int DEFAULT_IMAGE_MAX_RETRIES = 2;
+
+    private final Response.Listener<Bitmap> mListener;
+    private final Bitmap.Config mDecodeConfig;
+    private final int mMaxWidth;
+    private final int mMaxHeight;
+    private ImageView.ScaleType mScaleType;
+
+    /** Bitmap解析同步锁,保证同一时间只有一个Bitmap被load到内存进行解析,防止OOM. */
+    private static final Object sDecodeLock = new Object();
+
+    /**
+     * 构造一个网络图片请求.
+     * @param url 图片的url地址.
+     * @param listener 请求成功用户设置的回调接口.
+     * @param maxWidth 图片的最大宽度.
+     * @param maxHeight 图片的最大高度.
+     * @param scaleType 图片缩放类型.
+     * @param decodeConfig 解析bitmap的配置.
+     * @param errorListener 请求失败用户设置的回调接口.
+     */
+    public ImageRequest(String url, Response.Listener<Bitmap> listener, int maxWidth, int maxHeight,
+                        ImageView.ScaleType scaleType, Bitmap.Config decodeConfig,
+                        Response.ErrorListener errorListener) {
+        super(Method.GET, url, errorListener);
+        mListener = listener;
+        mDecodeConfig = decodeConfig;
+        mMaxWidth = maxWidth;
+        mMaxHeight = maxHeight;
+        mScaleType = scaleType;
+    }
+
+    /** 设置网络图片请求的优先级. */
+    @Override
+    public Priority getPriority() {
+        return Priority.LOW;
+    }
+
+    @Override
+    protected Response<Bitmap> parseNetworkResponse(NetworkResponse response) {
+        synchronized (sDecodeLock) {
+            try {
+                return doParse(response);
+            } catch (OutOfMemoryError e) {
+                return Response.error(new VolleyError(e));
+            }
+        }
+    }
+
+    private Response<Bitmap> doParse(NetworkResponse response) {
+        byte[] data = response.data;
+        BitmapFactory.Options decodeOptions = new BitmapFactory.Options();
+        Bitmap bitmap;
+        if (mMaxWidth == 0 && mMaxHeight == 0) {
+            decodeOptions.inPreferredConfig = mDecodeConfig;
+            bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, decodeOptions);
+        } else {
+            // 获取网络图片的真实尺寸.
+            decodeOptions.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(data, 0, data.length, decodeOptions);
+            int actualWidth = decodeOptions.outWidth;
+            int actualHeight = decodeOptions.outHeight;
+
+            int desiredWidth = getResizedDimension(mMaxWidth, mMaxHeight,
+                    actualWidth, actualHeight, mScaleType);
+            int desireHeight = getResizedDimension(mMaxWidth, mMaxHeight,
+                    actualWidth, actualHeight, mScaleType);
+
+            decodeOptions.inJustDecodeBounds = false;
+            decodeOptions.inSampleSize =
+                    findBestSampleSize(actualWidth, actualHeight, desiredWidth, desireHeight);
+            Bitmap tempBitmap = BitmapFactory.decodeByteArray(data, 0, data.length, decodeOptions);
+
+            if (tempBitmap != null && (tempBitmap.getWidth() > desiredWidth ||
+                    tempBitmap.getHeight() > desireHeight)) {
+                bitmap = Bitmap.createScaledBitmap(tempBitmap, desiredWidth, desireHeight, true);
+                tempBitmap.recycle();
+            } else {
+                bitmap = tempBitmap;
+            }
+        }
+
+        if (bitmap == null) {
+            return Response.error(new VolleyError(response));
+        } else {
+            return Response.success(bitmap, HttpHeaderParser.parseCacheHeaders(response));
+        }
+    }
+
+    static int findBestSampleSize(
+            int actualWidth, int actualHeight, int desiredWidth, int desireHeight) {
+        double wr = (double) actualWidth / desiredWidth;
+        double hr = (double) actualHeight / desireHeight;
+        double ratio = Math.min(wr, hr);
+        float n = 1.0f;
+        while ((n * 2) <= ratio) {
+            n *= 2;
+        }
+        return (int) n;
+    }
+
+    /** 根据ImageView的ScaleType设置图片的大小. */
+    private static int getResizedDimension(int maxPrimary, int maxSecondary, int actualPrimary,
+                                           int actualSecondary, ImageView.ScaleType scaleType) {
+        // 如果没有设置ImageView的最大值,则直接返回网络图片的真实大小.
+        if ((maxPrimary == 0) && (maxSecondary == 0)) {
+            return actualPrimary;
+        }
+
+        // 如果ImageView的ScaleType为FIX_XY,则将其设置为图片最值.
+        if (scaleType == ImageView.ScaleType.FIT_XY) {
+            if (maxPrimary == 0) {
+                return actualPrimary;
+            }
+            return maxPrimary;
+        }
+
+        if (maxPrimary == 0) {
+            double ratio = (double)maxSecondary / (double)actualSecondary;
+            return (int)(actualPrimary * ratio);
+        }
+
+        if (maxSecondary == 0) {
+            return maxPrimary;
+        }
+
+        double ratio = (double) actualSecondary / (double) actualPrimary;
+        int resized = maxPrimary;
+
+        if (scaleType == ImageView.ScaleType.CENTER_CROP) {
+            if ((resized * ratio) < maxSecondary) {
+                resized = (int)(maxSecondary / ratio);
+            }
+            return resized;
+        }
+
+        if ((resized * ratio) > maxSecondary) {
+            resized = (int)(maxSecondary / ratio);
+        }
+
+        return resized;
+    }
+
+
+    @Override
+    protected void deliverResponse(Bitmap response) {
+        mListener.onResponse(response);
+    }
+}
+```
+因为Volley本身框架已经实现了对网络请求的本地缓存,所以ImageRequest做的主要事情就是解析字节流为Bitmap,再解析过程中,通过静态变量保证每次只解析一个Bitmap防止OOM,使用ScaleType和用户设置的MaxWidth和MaxHeight来设置图片大小.
+总体来说,ImageRequest的实现非常简单,这里不做过多的讲解.ImageRequest的缺陷在于,一次只能解析一个Bitmap,而且没有图片的内存缓存.
+
+## ImageLoader.java
+
+
 # Volley框架概览
 
 讲到这里,Volley的整体框架基本就算介绍完全了.相信坚持看到这里的同学,肯定对Volley框架也已经非常熟悉,这时候我们再来看一下Volley框架的整体架构,回顾一下之前所讲的知识:
@@ -1965,13 +2141,13 @@ Request的finish方法源码如下:
 
 # 问答
 
-欢迎大家提出跟Volley架构相关的问题，我会挑选出某个问题进行具体解答.
+欢迎大家提出跟Volley架构相关的问题,我会挑选出某个问题进行具体解答.
 
-1. 为什么Volley适合频繁的网络请求，不适合文件上传等大数据请求呢？
+1. 为什么Volley适合频繁的网络请求,不适合文件上传等大数据请求呢？
 
-> 答：Volley为什么适合频繁的网络请求，是因为:
+> 答：Volley为什么适合频繁的网络请求,是因为:
   1. Volley有四个并发的线程,并有一个阻塞队列来对并发线程进行调度.
   2. Volley有自己的Disk缓存系统,相同url的Request再没过期前可以直接从Disk缓存系统中获取结果.
-  3. Volley的RequestQueue类有一个mWaitingRequest的Map,用来存储相同url的request,key为url,value为request队列。保证同一时间相同url的request只有一个再执行,后续Request再第一个request结束后可直接从缓存系统中获取结果.
-  为什么不适合文件上传,是因为文件上传这种操作都是唯一的，用不到缓存，而且4个线程的并发似乎也有点少.
+  3. Volley的RequestQueue类有一个mWaitingRequest的Map,用来存储相同url的request,key为url,value为request队列.保证同一时间相同url的request只有一个再执行,后续Request再第一个request结束后可直接从缓存系统中获取结果.
+  为什么不适合文件上传,是因为文件上传这种操作都是唯一的,用不到缓存,而且4个线程的并发似乎也有点少.
 
