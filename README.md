@@ -2128,9 +2128,17 @@ public class ImageRequest extends Request<Bitmap> {
 }
 ```
 因为Volley本身框架已经实现了对网络请求的本地缓存,所以ImageRequest做的主要事情就是解析字节流为Bitmap,再解析过程中,通过静态变量保证每次只解析一个Bitmap防止OOM,使用ScaleType和用户设置的MaxWidth和MaxHeight来设置图片大小.
-总体来说,ImageRequest的实现非常简单,这里不做过多的讲解.ImageRequest的缺陷在于,一次只能解析一个Bitmap,而且没有图片的内存缓存.
+总体来说,ImageRequest的实现非常简单,这里不做过多的讲解.ImageRequest的缺陷在于:
+
+1. 需要用户进行过多的设置,包括图片的大小的最大值. 
+2. 没有图片的内存缓存,因为Volley的缓存是基于Disk的缓存,有对象反序列化的过程.
 
 ## ImageLoader.java
+
+鉴于以上两个缺点，Volley又提供了一个更牛逼的ImageLoader类.其中,最关键的就是增加了内存缓存.注释源码如下:
+```java
+
+```
 
 
 # Volley框架概览
