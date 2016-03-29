@@ -2134,7 +2134,7 @@ public class ImageRequest extends Request<Bitmap> {
 2. 没有图片的内存缓存,因为Volley的缓存是基于Disk的缓存,有对象反序列化的过程.
 
 ## ImageLoader.java
-鉴于以上两个缺点，Volley又提供了一个更牛逼的ImageLoader类.其中,最关键的就是增加了内存缓存.
+鉴于以上两个缺点,Volley又提供了一个更牛逼的ImageLoader类.其中,最关键的就是增加了内存缓存.
 再讲解ImageLoader的源码之前,需要先介绍一下ImageLoader的使用方法.和之前的Request请求不同,ImageLoader并不是new出来直接扔给RequestQueue进行调度,它的使用方法大体分为4步:
 
 * 创建一个RequestQueue对象.
