@@ -2472,10 +2472,89 @@ public class ImageLoader {
 
 1. batchResponse方法的实现.
 
+我很奇怪,为什么ImageLoader类里面要有一个HashMap来保存BatchedImageRequest集合呢?
+```java
+    private final HashMap<String, BatchedImageRequest> mBatchedResponses =
+            new HashMap<String, BatchedImageRequest>();
+```
+毕竟batchResponse是在特定的ImageRequest执行成功的回调中被调用的,调用代码如下:
+```java
+    protected void onGetImageSuccess(String cacheKey, Bitmap response) {
+        // 增加L1缓存的键值对.
+        mCache.putBitmap(cacheKey, response);
 
+        // 同一时间内最初的ImageRequest执行成功后,回调这段时间阻塞的相同ImageRequest对应的成功回调接口.
+        BatchedImageRequest request = mInFlightRequests.remove(cacheKey);
+        if (request != null) {
+            request.mResponseBitmap = response;
+            // 将阻塞的ImageRequest进行结果分发.
+            batchResponse(cacheKey, request);
+        }
+    }
+```
+从上述代码可以看出,ImageRequest请求成功后,已经从mInFlightRequests中获取了对应的BatchedImageRequest对象.而同一时间被阻塞的相同的ImageRequest对应的ImageContainer都在BatchedImageRequest的mContainers集合中.
+那我认为,batchResponse方法只需要遍历对应BatchedImageRequest的mContainers集合即可.
+但是,ImageLoader源码中,我认为多余的构造了一个HashMap对象mBatchedResponses来保存BatchedImageRequest集合,然后在batchResponse方法中又对集合进行两层for循环各种遍历,实在是非常诡异,求指导.
+诡异代码如下:
+```java
+    private void batchResponse(String cacheKey, BatchedImageRequest request) {
+        mBatchedResponses.put(cacheKey, request);
+        if (mRunnable == null) {
+            mRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    for (BatchedImageRequest bir :  mBatchedResponses.values()) {
+                        for (ImageContainer container : bir.mContainers) {
+                            if (container.mListener == null) {
+                                continue;
+                            }
 
+                            if (bir.getError() == null) {
+                                container.mBitmap = bir.mResponseBitmap;
+                                container.mListener.onResponse(container, false);
+                            } else {
+                                container.mListener.onErrorResponse(bir.getError());
+                            }
+                        }
+                    }
+                    mBatchedResponses.clear();
+                    mRunnable = null;
+                }
+            };
+            // Post the runnable
+            mHandler.postDelayed(mRunnable, 100);
+        }
+    }
+```
+我认为的代码实现应该是:
+```java
+    private void batchResponse(String cacheKey, BatchedImageRequest request) {
+        if (mRunnable == null) {
+            mRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    for (ImageContainer container : request.mContainers) {
+                        if (container.mListener == null) {
+                            continue;
+                        }
 
-但是,使用ImageLoader默认提供的ImageListener,我认为存在一个缺陷,即图片闪现问题.当为ListView的item设置图片时,需要增加TAG判断.
+                        if (request.getError() == null) {
+                            container.mBitmap = request.mResponseBitmap;
+                            container.mListener.onResponse(container, false);
+                        } else {
+                            container.mListener.onErrorResponse(request.getError());
+                        }
+                    }
+                    mRunnable = null;
+                }
+            };
+            // Post the runnable
+            mHandler.postDelayed(mRunnable, 100);
+        }
+    }
+```
+
+2. 使用ImageLoader默认提供的ImageListener,我认为存在一个缺陷,即图片闪现问题.当为ListView的item设置图片时,需要增加TAG判断.因为对应的ImageView可能已经被回收利用了.
 
 # Volley框架概览
 
