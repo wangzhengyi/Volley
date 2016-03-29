@@ -2569,8 +2569,14 @@ public class ImageLruCache implements ImageLoader.ImageCache {
     private LruCache<String, Bitmap> mLruCache;
 
     public ImageLruCache() {
-        int maxMemory = (int) Runtime.getRuntime().maxMemory();
-        int cacheSize = maxMemory / 8;
+        this((int) Runtime.getRuntime().maxMemory() / 8);
+    }
+
+    public ImageLruCache(final int cacheSize) {
+        createLruCache(cacheSize);
+    }
+
+    private void createLruCache(final int cacheSize) {
         mLruCache = new LruCache<String, Bitmap>(cacheSize) {
             @Override
             protected int sizeOf(String key, Bitmap value) {
