@@ -2137,11 +2137,11 @@ public class ImageRequest extends Request<Bitmap> {
 鉴于以上两个缺点，Volley又提供了一个更牛逼的ImageLoader类.其中,最关键的就是增加了内存缓存.
 再讲解ImageLoader的源码之前,需要先介绍一下ImageLoader的使用方法.和之前的Request请求不同,ImageLoader并不是new出来直接扔给RequestQueue进行调度,它的使用方法大体分为4步:
 
-1. 创建一个RequestQueue对象.
+* 创建一个RequestQueue对象.
 ```java
 RequestQueue queue = Volley.newRequestQueue(context);
 ```
-2. 创建一个ImageLoader对象.ImageLoader构造函数接收两个参数,第一个是RequestQueue对象,第二个是ImageCache对象(也就是内存缓存类,我们先不给出具体实现,讲解完ImageLoader源码之后,我会提供一个利用LRU算法的ImageCache实现类)
+* 创建一个ImageLoader对象.ImageLoader构造函数接收两个参数,第一个是RequestQueue对象,第二个是ImageCache对象(也就是内存缓存类,我们先不给出具体实现,讲解完ImageLoader源码之后,我会提供一个利用LRU算法的ImageCache实现类)
 ```java
 ImageLoader imageLoader = new ImageLoader(queue, new ImageCache() {
     @Override
@@ -2150,11 +2150,11 @@ ImageLoader imageLoader = new ImageLoader(queue, new ImageCache() {
     public Bitmap getBitmap(String url) { return null; }
 });
 ```
-3. 获取一个ImageListener对象.
+* 获取一个ImageListener对象.
 ```java
 ImageListener listener = ImageLoader.getImageListener(imageView, R.drawable.default_imgage, R.drawable.failed_image);
 ```
-4. 调用ImageLoader的get方法加载网络图片.
+* 调用ImageLoader的get方法加载网络图片.
 ```java
 imageLoader.get(mImageUrl, listener, maxWidth, maxHeight, scaleType);
 ```
@@ -2470,7 +2470,7 @@ public class ImageLoader {
  
 个人对Imageloader的源码有两个重大疑问?
 
-1. batchResponse方法的实现.
+* batchResponse方法的实现.
 
 我很奇怪,为什么ImageLoader类里面要有一个HashMap来保存BatchedImageRequest集合呢?
 ```java
@@ -2554,7 +2554,42 @@ public class ImageLoader {
     }
 ```
 
-2. 使用ImageLoader默认提供的ImageListener,我认为存在一个缺陷,即图片闪现问题.当为ListView的item设置图片时,需要增加TAG判断.因为对应的ImageView可能已经被回收利用了.
+* 使用ImageLoader默认提供的ImageListener,我认为存在一个缺陷,即图片闪现问题.当为ListView的item设置图片时,需要增加TAG判断.因为对应的ImageView可能已经被回收利用了.
+
+## 自定义L1缓存类
+首先说明一下,所谓的L1和L2缓存分别指的是内存缓存和硬盘缓存.
+实现L1缓存,我们可以使用Android提供的Lru缓存类,示例代码如下:
+```java
+import android.graphics.Bitmap;
+import android.support.v4.util.LruCache;
+
+/** Lru算法的L1缓存实现类. */
+@SuppressWarnings("unused")
+public class ImageLruCache implements ImageLoader.ImageCache {
+    private LruCache<String, Bitmap> mLruCache;
+
+    public ImageLruCache() {
+        int maxMemory = (int) Runtime.getRuntime().maxMemory();
+        int cacheSize = maxMemory / 8;
+        mLruCache = new LruCache<String, Bitmap>(cacheSize) {
+            @Override
+            protected int sizeOf(String key, Bitmap value) {
+                return value.getRowBytes() * value.getHeight();
+            }
+        };
+    }
+
+    @Override
+    public Bitmap getBitmap(String url) {
+        return mLruCache.get(url);
+    }
+
+    @Override
+    public void putBitmap(String url, Bitmap bitmap) {
+        mLruCache.put(url, bitmap);
+    }
+}
+```
 
 # Volley框架概览
 
