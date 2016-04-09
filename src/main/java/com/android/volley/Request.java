@@ -1,7 +1,6 @@
 package com.android.volley;
 
 import android.net.Uri;
-import android.support.annotation.NonNull;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -309,7 +308,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
 
     /** 先判断执行顺序，再判断request优先级. */
     @Override
-    public int compareTo(@NonNull Request<T> another) {
+    public int compareTo(Request<T> another) {
         Priority left = this.getPriority();
         Priority right = another.getPriority();
 

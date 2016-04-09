@@ -1,6 +1,5 @@
 package com.android.volley.toolbox;
 
-import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.android.volley.Cache;
@@ -468,7 +467,7 @@ public class DiskBasedCache implements Cache {
         }
 
         @Override
-        public int read(@NonNull byte[] buffer, int byteOffset, int byteCount) throws IOException {
+        public int read(byte[] buffer, int byteOffset, int byteCount) throws IOException {
             int result = super.read(buffer, byteOffset, byteCount);
             if (result != -1) {
                 bytesRead += result;

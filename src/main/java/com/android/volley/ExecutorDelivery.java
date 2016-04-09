@@ -1,7 +1,6 @@
 package com.android.volley;
 
 import android.os.Handler;
-import android.support.annotation.NonNull;
 
 import java.util.concurrent.Executor;
 
@@ -18,7 +17,7 @@ public class ExecutorDelivery implements ResponseDelivery {
     public ExecutorDelivery(final Handler handler) {
         mResponsePoster = new Executor() {
             @Override
-            public void execute(@NonNull Runnable command) {
+            public void execute(Runnable command) {
                 // 所有的Runnable通过绑定主线程Looper的Handler对象最终在主线程执行.
                 handler.post(command);
             }
