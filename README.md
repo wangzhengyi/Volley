@@ -2605,6 +2605,11 @@ public class ImageLruCache implements ImageLoader.ImageCache {
 ![Volley_FRAME](https://github.com/wangzhengyi/Volley/raw/master/picture/volley_frame.png)
 
 ------
+# 补充
+
+1. [Volley 缓存机制详解](http://github.com/wangzhengyi/Volley/blob/master/VOLLEY_CACHE.md)
+
+-----
 # 问答
 
 欢迎大家提出跟Volley架构相关的问题,我会挑选出某个问题进行具体解答.
