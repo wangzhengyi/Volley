@@ -21,7 +21,7 @@
 
 在我总结的这些问题的基础上,我们来学习一下Volley是如何解决并实现这些问题的.
 
-****
+------
 
 # 网络请求抽象类
 
@@ -393,7 +393,7 @@ public class StringRequest extends Request<String>{
 
 介绍完Request抽象,那我们继续来看一下Response抽象.
 
-****
+------
 
 # 网络请求结果抽象类
 
@@ -501,7 +501,7 @@ public class NetworkResponse {
 }
 ```
 
-****
+------
 # 网络请求的并发和异步
 
 在讲解网络请求的并发和异步之前,我们先来看一下,Volley是如何封装网络请求的.
@@ -1211,6 +1211,7 @@ public class ExecutorDelivery implements ResponseDelivery {
 }
 ```
 
+------
 # 缓存机制
 
 前面讲解了并发和异步的实现,接下来,我们就来看一下Volley的缓存机制.再学习Volley缓存实现方案之前,我们先来感受一下Google I/O大会上Volley官方一张宣传图片：
@@ -1956,7 +1957,7 @@ Request的finish方法源码如下:
 ```
 相信上面的注释足够让大家理解mWaitingRequests的妙用了.
 
-
+------
 # Volley获取网络图片
 本来想分析Universal Image Loader的源码,但是发现Volley已经实现了网络图片的加载功能.其实,网络图片的加载也是分几个步骤:
 1. 获取网络图片的url.
@@ -2597,12 +2598,13 @@ public class ImageLruCache implements ImageLoader.ImageCache {
 }
 ```
 
+------
 # Volley框架概览
 
 讲到这里,Volley的整体框架基本就算介绍完全了.相信坚持看到这里的同学,肯定对Volley框架也已经非常熟悉,这时候我们再来看一下Volley框架的整体架构,回顾一下之前所讲的知识:
 ![Volley_FRAME](https://github.com/wangzhengyi/Volley/raw/master/picture/volley_frame.png)
 
-
+------
 # 问答
 
 欢迎大家提出跟Volley架构相关的问题,我会挑选出某个问题进行具体解答.

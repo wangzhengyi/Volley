@@ -34,7 +34,7 @@ public class HttpHeaderParser {
         boolean hasCacheControl = false;
         boolean mustRevalidate = false;
 
-        String serverEtag = null;
+        String serverEtag;
         String headerValue;
 
         headerValue = headers.get("Date");
@@ -42,44 +42,52 @@ public class HttpHeaderParser {
             serverDate = parseDateAsEpoch(headerValue);
         }
 
+        // 获取响应体的Cache缓存策略.
         headerValue = headers.get("Cache-Control");
         if (headerValue != null) {
             hasCacheControl = true;
             String[] tokens = headerValue.split(",");
-            for (int i = 0; i < tokens.length; i++) {
-                String token = tokens[i].trim();
+            for (String token : tokens) {
+                token = token.trim();
                 if (token.equals("no-cache") || token.equals("no-store")) {
+                    // no-cache|no-store代表服务器禁止客户端缓存,每次需要重新发送HTTP请求
                     return null;
                 } else if (token.startsWith("max-age=")) {
+                    // 获取缓存的有效时间
                     try {
                         maxAge = Long.parseLong(token.substring(8));
                     } catch (Exception e) {
+                        maxAge = 0;
                     }
                 } else if (token.startsWith("stale-while-revalidate=")) {
                     try {
                         staleWhileRevalidate = Long.parseLong(token.substring(23));
                     } catch (Exception e) {
+                        staleWhileRevalidate = 0;
                     }
                 } else if (token.equals("must-revalidate") || token.equals("proxy-revalidate")) {
+                    // 需要进行新鲜度验证
                     mustRevalidate = true;
                 }
             }
         }
 
+        // 获取服务器资源的过期时间
         headerValue = headers.get("Expires");
         if (headerValue != null) {
             serverExpires = parseDateAsEpoch(headerValue);
         }
 
+        // 获取服务器资源最后一次的修改时间
         headerValue = headers.get("Last-Modified");
         if (headerValue != null) {
             lastModified = parseDateAsEpoch(headerValue);
         }
 
+        // 获取服务器资源标识
         serverEtag = headers.get("ETag");
 
-        // Cache-Control takes precedence over an Expires header, even if both exist and Expires
-        // is more restrictive.
+        // 计算缓存的ttl和softTtl
         if (hasCacheControl) {
             softExpire = now + maxAge * 1000;
             finalExpire = mustRevalidate
