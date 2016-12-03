@@ -46,6 +46,7 @@ public class BasicNetwork implements Network {
 
     @Override
     public NetworkResponse performRequest(Request<?> request) throws VolleyError {
+        // 记录请求开始时间,便于进行超时重试
         long requestStart = SystemClock.elapsedRealtime();
         while (true) {
             HttpResponse httpResponse = null;

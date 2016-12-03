@@ -2608,7 +2608,7 @@ public class ImageLruCache implements ImageLoader.ImageCache {
 # 补充
 
 1. [Volley 缓存机制详解](http://github.com/wangzhengyi/Volley/blob/master/VOLLEY_CACHE.md)
-
+2. [Volley 超时重试机制详解](http://github.com/wangzhengyi/Volley/blob/master/VOLLEY_RETRY_POLICY.md)
 -----
 # 问答
 
